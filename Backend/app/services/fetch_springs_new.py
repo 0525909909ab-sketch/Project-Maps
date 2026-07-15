@@ -1,7 +1,7 @@
 import os
 import requests
 from supabase import create_client, Client
-from app.core.confing import settings
+from Backend.app.core.config import settings
 import time
 
 
