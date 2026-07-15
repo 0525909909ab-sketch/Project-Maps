@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
+import Map3D from './features/map/Map';
+import './App.css';
 
 function App() {
   const [status, setStatus] = useState('בודק חיבור ל-Supabase...');
@@ -20,8 +22,9 @@ function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', textAlign: 'center' }}>
-      <h1>בדיקת פרויקט מפות</h1>
-      <p style={{ fontSize: '18px', fontWeight: 'bold' }}>{status}</p>
+       <h1>בדיקת פרויקט מפות</h1>
+       <p style={{ fontSize: '18px', fontWeight: 'bold' }}>{status}</p>
+       <Map3D />
     </div>
   );
 }
