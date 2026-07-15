@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Map, Marker, Popup, Source, Layer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { getGeneralData } from '../../api/general';
+import { getUsersLocationsApi } from '../../api/general';
 import mapboxgl from 'mapbox-gl';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
-function Map3D() {
+function UsersMap() {
   const [locations, setLocations] = useState([]);
+  const [userPosition, setUserPosition] = useState(null); // סטייט חדש לשמירת המיקום העצמי של המשתמש
   const [loading, setLoading] = useState(true);
   const [selectedLoc, setSelectedLoc] = useState(null);
 
@@ -20,9 +21,9 @@ function Map3D() {
     bearing: 0  
   });
 
-  // אופקט 1: משיכת מקורות המים מהדאטה-בייס של Supabase
+  // אפקט 1: משיכת מקורות המים מהדאטה-בייס של Supabase
   useEffect(() => {
-    getGeneralData()
+    getUsersLocationsApi()
       .then((response) => {
         if (response?.data?.data) {
           setLocations(response.data.data);
@@ -39,16 +40,21 @@ function Map3D() {
       });
   }, []);
 
-  // אפקט 2: 🚀 שליפת מיקום ה-GPS של המשתמש וריכוז המפה סביבו
+  // אפקט 2: שליפת מיקום ה-GPS של המשתמש וריכוז המפה סביבו
   useEffect(() => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          // המשתמש אישר שיתוף מיקום - מסיטים את המפה אליו בזום קרוב
+          const { latitude, longitude } = position.coords;
+          
+          // שמירת המיקום המדויק של המשתמש כדי להציג את הדמות שלו
+          setUserPosition({ latitude, longitude });
+
+          // המשתמש אישור שיתוף מיקום - מסיטים את המפה אליו בזום קרוב
           setViewState(prevState => ({
             ...prevState,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
+            latitude: latitude,
+            longitude: longitude,
             zoom: 13 
           }));
         },
@@ -57,7 +63,7 @@ function Map3D() {
         }
       );
     }
-  }, []); // רץ פעם אחת מיד כשהמשתמש מנווט ומגיע לעמוד
+  }, []); 
 
   if (loading) {
     return (
@@ -85,11 +91,10 @@ function Map3D() {
         onMove={evt => setViewState(evt.viewState)}
         mapStyle="mapbox://styles/mapbox/satellite-v9" 
         mapboxAccessToken={MAPBOX_TOKEN}
-        mapLib={mapboxgl} // מקשר ישירות את המנוע על מנת למנוע שגיאות קריסה של תהליכונים
-        terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }} // הפעלת פני שטח הרריים
+        mapLib={mapboxgl} 
+        terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }} 
         style={{ width: '100%', height: '100%' }} 
       >
-        {/* הגדרת מקור פני השטח של המפה עבור התלת-ממד */}
         <Source 
           id="mapbox-dem" 
           type="raster-dem" 
@@ -98,6 +103,27 @@ function Map3D() {
         />
         
         <Layer {...skyLayer} />
+
+        {/* 🚀 הוספת מיקום עצמי בזמן אמת - מציג דמות של אדם מנווט */}
+        {userPosition && (
+          <Marker
+            latitude={userPosition.latitude}
+            longitude={userPosition.longitude}
+            anchor="bottom"
+            pitchAlignment="viewport"
+            style={{ zIndex: 10005 }} // מבטיח שהדמות תצוף מעל פני השטח ההרריים והסיכות האחרות
+          >
+            <div style={{
+              fontSize: '32px',
+              filter: 'drop-shadow(0px 4px 8px rgba(0,0,0,0.6))',
+              cursor: 'pointer'
+            }}
+            title="המיקום הנוכחי שלך"
+            >
+              🚶‍♂️
+            </div>
+          </Marker>
+        )}
 
         {/* יצירת סיכות הטיפה על המפה */}
         {locations.map((loc) => {
@@ -110,7 +136,7 @@ function Map3D() {
               longitude={Number(loc.longitude)}
               anchor="bottom"
               pitchAlignment="viewport" 
-              style={{ zIndex: 9999 }} // מונע מהאימוג'י להיבלע מתחת להרים התלת-ממדיים
+              style={{ zIndex: 9999 }} 
               onClick={e => {
                 e.originalEvent.stopPropagation();
                 setSelectedLoc(loc);
@@ -142,14 +168,47 @@ function Map3D() {
             anchor="top"
             onClose={() => setSelectedLoc(null)}
             closeOnClick={false}
-            maxWidth="300px"
-            style={{ zIndex: 10001 }} // מבטיח שהפופאפ יצוף מעל שכבת האדמה והסיכות
+            maxWidth="260px"
+            style={{ zIndex: 10001 }} 
           >
             <div style={{ direction: 'rtl', textAlign: 'right', fontFamily: 'sans-serif', padding: '5px', color: '#333' }}>
+              {/* שם המקום */}
               <h3 style={{ margin: '0 0 5px 0', color: '#1a73e8', fontSize: '16px' }}>📍 {selectedLoc.name}</h3>
-              {selectedLoc.address && <p style={{ margin: '5px 0', fontSize: '14px' }}><strong>כתובת:</strong> {selectedLoc.address}</p>}
               
-              <div style={{ marginTop: '12px', borderTop: '1px solid #eee', paddingTop: '8px' }}>
+              {/* כתובת (אם קיימת) */}
+              {selectedLoc.address && (
+                <p style={{ margin: '5px 0', fontSize: '13px' }}>
+                  <strong>כתובת:</strong> {selectedLoc.address}
+                </p>
+              )}
+
+              {/* תיאור / הערות (אם קיימים) */}
+              {selectedLoc.description && (
+                <p style={{ margin: '5px 0', fontSize: '13px', color: '#555', lineHeight: '1.4' }}>
+                  <strong>תיאור:</strong> {selectedLoc.description}
+                </p>
+              )}
+
+              {/* השילוב של התמונה החדשה */}
+              {selectedLoc.image_url && (
+                <div style={{ marginTop: '10px', marginBottom: '5px', textAlign: 'center', width: '100%' }}>
+                  <img 
+                    src={selectedLoc.image_url} 
+                    alt={selectedLoc.name} 
+                    style={{ 
+                      width: '100%', 
+                      maxHeight: '130px', 
+                      objectFit: 'cover', 
+                      borderRadius: '6px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                    }} 
+                    onError={(e) => e.target.style.display = 'none'} 
+                  />
+                </div>
+              )}
+              
+              {/* כפתור הניווט (תוקן) */}
+              <div style={{ marginTop: '12px', borderTop: '1px solid #eee', paddingTop: '8px', textAlign: 'left' }}>
                 <a 
                   href={`https://google.com{selectedLoc.latitude},${selectedLoc.longitude}`}
                   target="_blank"
@@ -167,4 +226,4 @@ function Map3D() {
   );
 }
 
-export default Map3D;
+export default UsersMap;

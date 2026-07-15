@@ -6,32 +6,65 @@ import { addUsersLocationApi } from '../api/general';
 const AddLocationForm = () => {
   const navigate = useNavigate();
   const [apiError, setApiError] = useState("");
+  const [geoError, setGeoError] = useState(""); // סטייט חדש לשגיאות GPS
   const [isSubmittingState, setIsSubmittingState] = useState(false);
+  const [isLocating, setIsLocating] = useState(false); // סטייט חדש לטעינת המיקום
 
   const {
     register,
     handleSubmit,
+    setValue, // פונקציה חדשה שחולצה כדי לאפשר לנו לעדכן שדות בצורה ידנית
     formState: { errors },
     reset
   } = useForm();
+
+  // פונקציה חדשה לשליפת מיקום ה-GPS של המשתמש והזרקתו לטופס
+  const handleGetCurrentLocation = () => {
+    if (!("geolocation" in navigator)) {
+      setGeoError("הדפדפן שלך אינו תומך בשירותי מיקום.");
+      return;
+    }
+
+    setIsLocating(true);
+    setGeoError("");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        // הזרקת הערכים לשדות ה-Latitude וה-Longitude של react-hook-form
+        setValue("latitude", position.coords.latitude, { shouldValidate: true });
+        setValue("longitude", position.coords.longitude, { shouldValidate: true });
+        setIsLocating(false);
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        setIsLocating(false);
+        if (error.code === 1) {
+          setGeoError("גישת ה-GPS נדחתה. אנא אשר שירותי מיקום בדפדפן.");
+        } else {
+          setGeoError("לא ניתן היה לקבוע את המיקום הנוכחי שלך.");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000 } // הגדרות דיוק מירבי
+    );
+  };
 
   const onSubmit = async (data) => {
     try {
       setApiError("");
       setIsSubmittingState(true);
 
-      // המרת ערכי הקואורדינטות מטקסט למספר עשרוני (Float) כפי שהשרת מצפה לקבל
-      const payload = {
-        name: data.name,
-        description: data.description || "",
-        latitude: parseFloat(data.latitude),
-        longitude: parseFloat(data.longitude)
-      };
+      const formData = new FormData();
+      formData.append("name", data.name);
+      formData.append("description", data.description || "");
+      formData.append("latitude", parseFloat(data.latitude));
+      formData.append("longitude", parseFloat(data.longitude));
 
-      // שליחת הנתונים לשרת ה-FastAPI
-      await addUsersLocationApi(payload);
+      if (data.image && data.image.length > 0) {
+        formData.append("image", data.image[0]);
+      }
+
+      await addUsersLocationApi(formData);
       
-      // איפוס הטופס ומעבר חזרה לעמוד המפה כדי לראות את הנקודה החדשה
       reset();
       navigate('/map');
     } catch (error) {
@@ -70,6 +103,41 @@ const AddLocationForm = () => {
             style={{ width: '100%', padding: '8px', boxSizing: 'border-box', resize: 'vertical' }}
             {...register("description")} 
           />
+        </div>
+
+        {/* שדה הוספת תמונה */}
+        <div style={{ marginBottom: '15px' }}>
+          <label htmlFor="image" style={{ display: 'block', marginBottom: '5px' }}>הוסף תמונה (אופציונלי):</label>
+          <input 
+            id="image"
+            type="file"
+            accept="image/*"
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+            {...register("image")} 
+          />
+        </div>
+
+        {/* --- הכפתור החדש למשיכת מיקום אוטומטית --- */}
+        <div style={{ marginBottom: '20px', borderTop: '1px solid #eee', paddingTop: '15px' }}>
+          <button
+            type="button" // חשוב מאוד כדי שהלחיצה לא תגיש את הטופס בטעות
+            onClick={handleGetCurrentLocation}
+            disabled={isLocating}
+            style={{
+              width: '100%',
+              padding: '10px',
+              backgroundColor: '#34a853',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '14px'
+            }}
+          >
+            {isLocating ? "מזהה מיקום..." : "📍 השתמש במיקום הנוכחי שלי"}
+          </button>
+          {geoError && <p style={{ color: 'orange', margin: '5px 0 0 0', fontSize: '13px', fontWeight: 'bold' }}>{geoError}</p>}
         </div>
 
         {/* שדה קו רוחב Latitude */}
