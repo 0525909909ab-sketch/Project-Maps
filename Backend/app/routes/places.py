@@ -1,32 +1,23 @@
-import os
-from fastapi import FastAPI, APIRouter, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from app.core.confing import settings
-from supabase import create_client, Client
+from fastapi import APIRouter, HTTPException
 
-SUPABASE_URL = settings.SUPABASE_URL
-SUPABASE_KEY = settings.SUPABASE_KEY
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# import DB client
+from app.core.db import supabase
 
 water_router = APIRouter(prefix="/places", tags=["Water Sources"])
 
+
 @water_router.get("/")
-def get_all_water_sources(): # שינינו את שם הפונקציה והסרנו את ה-place_id
+def get_all_water_sources():
     try:
-        # פנייה ל-Supabase ושליפת כל הרשומות מטבלת locations
+        # Query Supabase and fetch all records from the 'locations' table
         response = supabase.table("locations").select("*").execute()
-        
-        # המידע הנקי נמצא בתוך response.data כרשימה של דיקשנריז
+
+        # The clean data is located inside response.data as a list of dictionaries
         all_sources = response.data
-        
-        # החזרת הנתונים כ-JSON לפרונטאנד
-        return {
-            "success": True,
-            "count": len(all_sources),
-            "data": all_sources
-        }
-        
+
+        # Return the data as a JSON response to the frontend
+        return {"success": True, "count": len(all_sources), "data": all_sources}
+
     except Exception as e:
-        # במקרה של שגיאה מול הדאטה-בייס, נחזיר שגיאה מסודרת לפרונטאנד
-        raise HTTPException(status_code=500, detail=f"שגיאה בשליפת הנתונים: {str(e)}")
+        # In case of a database error, return a structured error to the frontend
+        raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
