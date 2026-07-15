@@ -10,27 +10,29 @@
     "preview": "vite preview"
   },
   "dependencies": {
-<<<<<<< HEAD
+    "@supabase/supabase-js": "^2.110.4",
     "axios": "^1.18.1",
     "leaflet": "^1.9.4",
     "mapbox-gl": "^3.26.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-leaflet": "^5.0.0",
-    "react-map-gl": "^8.1.1"
-=======
+    "react-router-dom": "^7.18.1",
+    "react-map-gl": "^8.1.1",
     "leaflet": "^1.9.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.18.1"
->>>>>>> origin/main
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "autoprefixer": "^10.5.2",
     "oxlint": "^1.71.0",
+    "postcss": "^8.5.19",
+    "tailwindcss": "^4.3.2",
     "vite": "^8.1.1"
   }
 }
