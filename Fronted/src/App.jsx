@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 import Map3D from './features/map/Map';
-import './App.css';
 
 function App() {
   const [status, setStatus] = useState('בודק חיבור ל-Supabase...');

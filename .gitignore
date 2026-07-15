@@ -1,15 +1,14 @@
-<<<<<<< HEAD
-Backend/.env 
-__pycache__/ 
-*.pyc 
-Backend/.env 
-Fronted/.env 
-__pycache__/ 
-*.pyc 
-Backend/.env 
-Fronted/.env 
-__pycache__/ 
-*.pyc 
-=======
+Fronted/node_modules/
 node_modules/
->>>>>>> origin/main
+Fronted/.env 
+Fronted/dist/
+dist/
+npm-debug.log*
+
+Backend/venv/
+venv/
+Backend/.env 
+__pycache__/ 
+*.pyc 
+
+.env
