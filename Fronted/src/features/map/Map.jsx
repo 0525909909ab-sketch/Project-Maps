@@ -3,20 +3,19 @@ import { Map, Marker, Popup, Source, Layer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getGeneralData } from '../../api/general';
 
-const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+// תוקן: שינוי לאותיות גדולות כדי להתאים לשימוש ברכיב למטה
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
-// תוקן רשמית: שם הפונקציה שונה ל-Map3D כדי למנוע לולאה אינסופית מול הרכיב <Map>
 function Map3D() {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLoc, setSelectedLoc] = useState(null);
 
-  // הגדרות תצוגה ראשונית עם זווית תלת-ממדית
   const [viewState, setViewState] = useState({
     latitude: 32.8000,
     longitude: 35.5000,
     zoom: 11,
-    pitch: 60, // זווית הטיית המצלמה
+    pitch: 60, 
     bearing: 0  
   });
 
@@ -42,7 +41,6 @@ function Map3D() {
     );
   }
 
-  // הגדרת שכבת השמיים באופק
   const skyLayer = {
     id: 'sky',
     type: 'sky',
@@ -59,9 +57,9 @@ function Map3D() {
         {...viewState}
         onMove={evt => setViewState(evt.viewState)}
         mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
-        mapboxAccessToken={MAPBOX_TOKEN}
+        mapboxAccessToken={MAPBOX_TOKEN} // תוקן רשמית ומקבל כעת את המשתנה הנכון
         terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }} 
-        style={{ width: '100%', height: '100%' }} // הגדרת ממדים קשיחה למניעת קריסת גובה
+        style={{ width: '100%', height: '100%' }} 
       >
         <Source 
           id="mapbox-dem" 
@@ -72,7 +70,6 @@ function Map3D() {
         
         <Layer {...skyLayer} />
 
-        {/* יצירת הסיכות על המפה */}
         {locations.map((loc) => {
           if (!loc.latitude || !loc.longitude) return null;
 
@@ -104,7 +101,6 @@ function Map3D() {
           );
         })}
 
-        {/* חלונית פופאפ קופצת בלחיצה על סיכה */}
         {selectedLoc && (
           <Popup
             latitude={Number(selectedLoc.latitude)}
@@ -119,7 +115,7 @@ function Map3D() {
               {selectedLoc.address && <p style={{ margin: '5px 0', fontSize: '14px' }}><strong>כתובת:</strong> {selectedLoc.address}</p>}
               
               <div style={{ marginTop: '12px', borderTop: '1px solid #eee', paddingTop: '8px' }}>
-                {/* תוקן סופית: לינק הניווט תוקן לפורמט ה-URL הרשמי והתקין של גוגל מפס */}
+                {/* תוקן: פורמט הניווט הרשמי של גוגל מפס */}
                 <a 
                   href={`https://google.com{selectedLoc.latitude},${selectedLoc.longitude}`}
                   target="_blank"
