@@ -7,3 +7,5 @@ export const loginApi = (email, password) => {
 export const registerApi = (email, password) => {
   return api.post('/auth/register', { email: email, password: password });
 };
+
+
