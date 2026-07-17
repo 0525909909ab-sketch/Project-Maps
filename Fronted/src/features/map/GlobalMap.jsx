@@ -3,7 +3,7 @@ import { Map, Marker, Popup, Source, Layer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getGeneralData, getUsersLocationsApi } from '../../api/general';
 import mapboxgl from 'mapbox-gl';
-
+import { addUsersSaveLocationApi } from '../../api/info';
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
 function GlobalMap() {
@@ -22,11 +22,20 @@ function GlobalMap() {
   });
 
   // אפקט 1: משיכת נתונים משתי הטבלאות במקביל (גוגל מפס הכללי + מיקומי משתמשים)
+    // אפקט 1: משיכת נתונים משתי הטבלאות במקביל + שליפת מזהה המשתמש מסופאבייס
   useEffect(() => {
-    Promise.all([getGeneralData(), getUsersLocationsApi()])
-      .then(([generalRes, userRes]) => {
+    // מריצים את כל הבקשות במקביל כדי לשפר ביצועים
+    Promise.all([
+      getGeneralData(), 
+      getUsersLocationsApi(), 
+      // הבקשה החדשה לסופאבייס
+    ])
+      .then(([generalRes, userRes, supabaseUserId]) => {
         let generalData = [];
         let userData = [];
+
+        // 1. שמירת מזהה המשתמש שחזר מסופאבייס בסטייט
+     
 
         // חילוץ נתונים מטבלת גוגל הכללית
         if (generalRes?.data?.data) generalData = generalRes.data.data;
@@ -41,7 +50,7 @@ function GlobalMap() {
         // הוספת סימון לכל מיקום של משתמש כדי שנדע להציג אותו בצורה שונה
         const formattedUserData = userData.map(loc => ({
           ...loc,
-          isUserLocation: true // דגל שמזהה שזה מיקום שהתווסף ידנית על ידי משתמש
+          isUserLocation: true 
         }));
 
         // איחוד שני המערכים למערך אחד גדול עבור המפה
@@ -49,10 +58,11 @@ function GlobalMap() {
         setLoading(false);
       })
       .catch((error) => {
-        console.error("שגיאה בטעינת המיקומים מהשרת:", error);
+        console.error("שגיאה בטעינת המיקומים או מזהה המשתמש מהשרת:", error);
         setLoading(false);
       });
   }, []);
+
 
   // אפקט 2: שליפת מיקום ה-GPS של המשתמש, שמירתו בסטייט וריכוז המפה סביבו
   useEffect(() => {
@@ -97,7 +107,10 @@ function GlobalMap() {
       'sky-atmosphere-sun-intensity': 15
     }
   };
-
+  const handlSave = async (selectedLoc) => {
+        await addUsersSaveLocationApi(selectedLoc.id);
+        console.log("you saved new place")
+  };
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <Map
@@ -234,6 +247,12 @@ href={`https://www.google.com/maps?q=${selectedLoc.latitude},${selectedLoc.longi
                 >
                   ניווט ב-Google Maps ➔
                 </a>
+              </div>
+              <div className='save-loaction'>
+                <button  onClick={
+                  () => handlSave(selectedLoc)}>
+                    click to save </button>
+
               </div>
             </div>
           </Popup>

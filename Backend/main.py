@@ -3,15 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.places import water_router
 from app.core.confing import settings  # מייבאים את ההגדרות שלך
 from app.routes.auth import auth_router
+from app.routes.usersInfo import info_router
 from app.routes.usersLocation import users_locations_router
 app = FastAPI(title="Israel Water Sources API")
-
+origins = [
+    "http://127.0.0.1:5173",  # הכתובת המדויקת של ויט בדפדפן שלך
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000"
+]
 # הגדרת CORS מאובטחת ותקינה לפי ה-Settings שלך
 app.add_middleware(
     CORSMiddleware,
-    # משתמשים ברשימת הכתובות שהגדרת (כמו http://localhost:3000 וכו')
-    allow_origins=settings.cors_origins_list,  
-    allow_credentials=True,
+    allow_origins=origins,         # רשימה מפורשת ויציבה
+    allow_credentials=True,       # 🌟 קריטי: מאפשר לדפדפן להוריד ולשמור את העוגייה שלך
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -19,6 +24,7 @@ app.add_middleware(
 # חיבור הראוטר
 app.include_router(water_router)
 app.include_router(auth_router)
+app.include_router(info_router)
 app.include_router(users_locations_router)
 if __name__ == "__main__":
     import uvicorn

@@ -45,6 +45,9 @@ const NavBar = () => {
       <NavLink to="/usersMap" style={navLinkStyle}>
         <span>🗺️</span> מפת משתמשים
       </NavLink>
+      <NavLink to="/userProfile" style={navLinkStyle}>
+        <span>🗺️</span> profile page
+      </NavLink>
 
       {/* הוספת מקום חדש */}
       <NavLink to="/addLocationForm" style={{
