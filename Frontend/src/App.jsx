@@ -1,30 +1,36 @@
-import { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
-import Map3D from './features/map/Map';
+import React, { useState } from 'react';
+import GlobalMap from './features/map/GlobalMap';
+import mapboxgl from 'mapbox-gl'; 
+import Layout from './pages/Layout';
+import Login from './pages/Login';
+import { createBrowserRouter,RouterProvider } from 'react-router-dom'
+import Home from './pages/Home';
+import AddLocationForm from './pages/AddLocationForm';
+import UsersMap from './features/map/UsersMap';
+import UserProfile from './pages/userProfile';
+const myRouter=createBrowserRouter([
+  {path:"/", element :<Layout/>,
+    children:[
+      {index:true,element:<Home/>},
+      {path:'map',element:<GlobalMap/>},
+      {path:'usersMap',element:<UsersMap />},
+      {path:'userProfile',element:<UserProfile />},
+      {path:'addLocationForm',element:<AddLocationForm />},
+      {path:'login',element:<Login />},
+     ]
+  }
+
+
+])
+
 
 function App() {
-  const [status, setStatus] = useState('בודק חיבור ל-Supabase...');
-
-  useEffect(() => {
-    async function checkConnection() {
-      // מנסה לעשות פעולה פשוטה מול Supabase כדי לראות שיש תקשורת
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        setStatus(`שגיאת חיבור: ${error.message}`);
-      } else {
-        setStatus('החיבור ל-Supabase עובד ומגיב מעולה!');
-      }
-    }
-    checkConnection();
-  }, []);
+  
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', textAlign: 'center' }}>
-       <h1>בדיקת פרויקט מפות</h1>
-       <p style={{ fontSize: '18px', fontWeight: 'bold' }}>{status}</p>
-       <Map3D />
-    </div>
+    <RouterProvider router={myRouter}/>
+          
+      
   );
 }
 
