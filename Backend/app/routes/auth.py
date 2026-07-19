@@ -13,6 +13,7 @@ auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # הגדרת מבנה הנתונים שמצפים לקבל מהפרונטאנד
 class UserAuthSchema(BaseModel):
+    name: str
     email: EmailStr
     password: str
 
@@ -49,12 +50,23 @@ def register_user(
 ):  # 🌟 Added response object
     """הרשמת משתמש חדש במערכת של Supabase והתחברות אוטומטית בעוגייה"""
     try:
-        # 1. קריאה לרישום המשתמש בסופאבייס
+        # 1. קריאה לרישום המשתמש בסופאבייס (Inner/hidden supabase authorization system)
         auth_response = supabase.auth.sign_up(
             {"email": user_data.email, "password": user_data.password}
         )
 
-        # 2. בדוק אם סופאבייס החזיר סשן פעיל מיד (קורה כשאישור מייל כבוי)
+        # USERS הוספת המשתמש לטבלה הציבורית שלנו
+        # In case registration is successful, record user into the table: USERS
+        if auth_response.user:
+            supabase.table("users").insert(
+                {
+                    "Username": user_data.name,
+                    "Gmail": user_data.email,
+                    # id (int8) & created_at - DB fill automatically.
+                }
+            ).execute()
+
+        # 2. בדוק אם סופאבייס החזיר סשן פעיל מיד
         if auth_response.session:
             token = auth_response.session.access_token
 
