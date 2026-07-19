@@ -1,11 +1,9 @@
-import api from "./client";
+import api from "./client"
 
 export const loginApi = (email, password) => {
-  return api.post('/auth/login', { email: email, password: password });
-};
+  return api.post("/auth/login", { email, password })
+}
 
-export const registerApi = (email, password) => {
-  return api.post('/auth/register', { email: email, password: password });
-};
-
-
+export const registerApi = (name, email, password) => {
+  return api.post("/auth/register", { name, email, password })
+}
