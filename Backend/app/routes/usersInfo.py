@@ -22,7 +22,8 @@ info_router = APIRouter(prefix="/usersInfo", tags=["Water Sources"])
 
 
 @info_router.get("/saveLocations")
-def get_user_save_locations(current_user_id: str = Depends(verify_supabase_user)):
+def get_user_save_locations(current_user: str = Depends(verify_supabase_user)):
+    current_user_id = current_user.id
     try:
         # We select both potential relation columns and their joined tables
         response = supabase.table("saved_pins").select("""
