@@ -18,9 +18,9 @@ class UserAuthSchema(BaseModel):
     password: str
 
 
-SUPABASE_URL = settings.SUPABASE_URL
-SUPABASE_KEY = settings.SUPABASE_KEY
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+class UserLoginSchema(BaseModel):
+    email: EmailStr
+    password: str
 
 
 def verify_supabase_user(request: Request) -> str:
@@ -36,7 +36,9 @@ def verify_supabase_user(request: Request) -> str:
     try:
         # 2. Validate the cookie token directly with Supabase
         user_response = supabase.auth.get_user(token)
-        return user_response.user.id  # Returns the secure true user UUID string
+        return (
+            user_response.user
+        )  # Returns user -> user.id returns the secure true user UUID string
 
     except Exception as e:
         raise HTTPException(
@@ -99,7 +101,7 @@ def register_user(
 
 @auth_router.post("/login")
 def login_user(
-    user_data: UserAuthSchema, response: Response
+    user_data: UserLoginSchema, response: Response
 ):  # 2. INJECT response OBJECT HERE
     """התחברות משתמש קיים וקבלת Token מאובטח"""
     try:
@@ -114,8 +116,8 @@ def login_user(
             key="sb_access_token",  # חייב להתאים בדיוק למה שפונקצייתverify_supabase_user מחפשת!
             value=token,
             httponly=True,  # חוסם האקרים מלקרוא את הטוקן דרך JavaScript קליינט
-            samesite="lax",  # נחוץ כדי שהעוגייה תעבור בין פורטים שונים בלוקאל-הוסט
-            secure=False,
+            samesite="none",  # נחוץ כדי שהעוגייה תעבור בין פורטים שונים בלוקאל-הוסט
+            secure=True,  # חובה כשמשתמשים ב-samesite="none"
             path="/",  # תשנה ל-True רק כשתעלה לשרת אמיתי עם HTTPS מאובטח
         )
 
@@ -124,3 +126,47 @@ def login_user(
         raise HTTPException(
             status_code=400, detail=f"פרטי התחברות שגויים או שגיאת מערכת: {str(e)}"
         )
+
+
+@auth_router.get("/me")
+def get_current_user(user=Depends(verify_supabase_user)):
+    """
+    Endpoint for Redux session recovery.
+    Checks cookies and returns user profile.
+    """
+    try:
+        # Get name from users table
+        # by using email from  checked token
+        db_response = (
+            supabase.table("users").select("Username").eq("Gmail", user.email).execute()
+        )
+
+        # If we found a name in DB — use it, otherwise set a placeholder
+        name = db_response.data[0]["Username"] if db_response.data else "User"
+
+        return {
+            "success": True,
+            "user": {"id": user.id, "email": user.email, "name": name},
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Error No user profile data accepted: {str(e)}"
+        )
+
+
+@auth_router.post("/logout")
+def logout_user(response: Response):
+    """
+    Endpoint for logout. Destroys the cookie in the user's browser.
+    """
+    response.delete_cookie(
+        key="sb_access_token",
+        path="/",
+        httponly=True,
+        samesite="none",
+        secure=True,
+    )
+    return {
+        "success": True,
+        "message": "You have successfully logged out of the system",
+    }
