@@ -41,8 +41,9 @@ app.include_router(water_router)
 app.include_router(auth_router)
 app.include_router(info_router)
 app.include_router(users_locations_router)
+
 if __name__ == "__main__":
     import uvicorn
 
-    # הרצת השרת על פורט 8000
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    # 👈 שינוי: host='0.0.0.0' מאפשר לשרת להקשיב לכל הכתובות המקומיות (localhost ו-127.0.0.1)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux"
 import { useNavigate } from "react-router-dom"
 import { useState } from "react"
 import { registerApi } from "../api/auth"
-import axios from "axios"
+import api from "../api/client" // 👈 שינוי: משתמשים בלקוח ה-API המרכזי במקום axios הישיר
 import { logoutUser, setUser } from "../store/slices/userSlice"
 
 const Home = () => {
@@ -11,7 +11,6 @@ const Home = () => {
   const dispatch = useDispatch()
 
   // Get user data from Redux.
-  // (Check the correct path to state.user, depends on your store configuration)
   const user = useSelector(state => state.user.email)
 
   // State for displaying API errors on the screen
@@ -38,25 +37,19 @@ const Home = () => {
         }),
       )
 
-      // 3. Перенаправляем на карту
+      // 3. Navigate to map
       navigate("/map")
     } catch (error) {
       console.error("Registration failed:", error)
-      // Показываем ошибку пользователю
-      setApiError("שגיאה בהרשמה: המייל כבר קיים או שגיאת רשת") // Или на английском/русском
+      setApiError("שגיאה בהרשמה: המייל כבר קיים או שגיאת רשת")
     }
   }
 
   const handleLogout = async () => {
     try {
       // 1. ask backend to kill HttpOnly cookie (logout)
-      await axios.post(
-        "http://localhost:8000/auth/logout",
-        {},
-        {
-          withCredentials: true,
-        },
-      )
+      // 👈 שינוי: קריאה מול api המרכזי במקום axios קשיח ל-localhost
+      await api.post("/auth/logout", {})
 
       // 2. clean global state Redux
       dispatch(logoutUser())

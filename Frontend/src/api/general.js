@@ -13,15 +13,21 @@ export const getGeneralData = async () => {
   }
 };
 
-
-
 export const getUsersLocationsApi = () => {
   return api.get('/userslocations/getAll');
 };
 
-
-
 export const addUsersLocationApi = (locationData) => {
-  // locationData יתקבל מהטופס כמבנה: { name, description, latitude, longitude }
+  // locationData יכול להיות FormData (אם יש תמונה) או אובייקט רגיל
   return api.post('/userslocations/add', locationData);
+};
+
+// 🟢 חדש: עדכון/עריכת מיקום קיים לפי ID
+export const updateUsersLocationApi = (id, locationData) => {
+  return api.put(`/userslocations/update/${id}`, locationData);
+};
+
+// 🟢 חדש: מחיקת מיקום לפי ID
+export const deleteUsersLocationApi = (id) => {
+  return api.delete(`/userslocations/delete/${id}`);
 };

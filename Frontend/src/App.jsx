@@ -8,7 +8,7 @@ import Home from "./pages/Home"
 import AddLocationForm from "./pages/AddLocationForm"
 import UsersMap from "./features/map/UsersMap"
 import UserProfile from "./pages/userProfile"
-import axios from "axios"
+import api from "./api/client" // 👈 משתמשים בלקוח ה-API המרכזי
 import { useDispatch } from "react-redux"
 import { setUser, logoutUser } from "./store/slices/userSlice"
 
@@ -33,12 +33,10 @@ function App() {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        // 🌟 withCredentials: true necessary, Otherwise browser will not add HttpOnly Cookie.!
-        const response = await axios.get("http://localhost:8000/auth/me", {
-          withCredentials: true,
-        })
+        // 🌟 api כבר כולל withCredentials: true ו-baseURL אחיד
+        const response = await api.get("/auth/me")
 
-        // In case. 200 OK and return user
+        // In case 200 OK and return user
         if (response.data.success) {
           dispatch(
             setUser({

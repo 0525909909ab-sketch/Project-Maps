@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { addUsersLocationApi } from '../api/general';
@@ -11,7 +11,13 @@ const AddLocationForm = () => {
   const [geoError, setGeoError] = useState(""); 
   const [isSubmittingState, setIsSubmittingState] = useState(false);
 
-  const { findUserLocations, userPosition, pinnedLocation, setPinnedLocation } = useAuth();
+  const { 
+    findUserLocations, 
+    userPosition, 
+    pinnedLocation, 
+    setPinnedLocation,
+    setLocations 
+  } = useAuth();
 
   const {
     register,
@@ -20,18 +26,25 @@ const AddLocationForm = () => {
     reset
   } = useForm();
 
+  // 👈 תיקון 1: האזנה לשינוי ב-userPosition ועדכון ה-Pinned Location ברגע שהוא נתפס
+  useEffect(() => {
+    if (userPosition && userPosition.latitude && userPosition.longitude) {
+      setPinnedLocation({ 
+        latitude: userPosition.latitude, 
+        longitude: userPosition.longitude 
+      });
+      setGeoError("");
+    }
+  }, [userPosition, setPinnedLocation]);
+
   const handleGetCurrentLocation = async () => {
     setGeoError("");
     try {
+      // הפעלת פונקציית האיתור - ה-useEffect למעלה יעשה את השאר ברגע שהמיקום יגיע
       await findUserLocations(); 
-      if (userPosition) {
-        setPinnedLocation({ latitude: userPosition.latitude, longitude: userPosition.longitude });
-      } else {
-        setGeoError("מאתר מיקום... לחץ שנית בעוד רגע.");
-      }
     } catch (error) {
       console.error("GPS Error:", error);
-      setGeoError("לא ניתן היה לקבוע את המיקום הנוכחי שלך.");
+      setGeoError("לא ניתן היה לקבוע את המיקום הנוכחי שלך. חפש במפה.");
     }
   };
 
@@ -45,25 +58,36 @@ const AddLocationForm = () => {
       setApiError("");
       setIsSubmittingState(true);
 
+      // 👈 תיקון 2: יצירת FormData בצורה מובנית ובטוחה
       const formData = new FormData();
       formData.append("name", data.name.trim());
       formData.append("description", (data.description || "").trim());
-      
-      formData.append("latitude", parseFloat(pinnedLocation.latitude));
-      formData.append("longitude", parseFloat(pinnedLocation.longitude));
+      formData.append("latitude", String(pinnedLocation.latitude));
+      formData.append("longitude", String(pinnedLocation.longitude));
 
       if (data.image && data.image.length > 0) {
         formData.append("image", data.image[0]);
       }
 
-      await addUsersLocationApi(formData);
+      // 1. שליחה לשרת 
+      const response = await addUsersLocationApi(formData);
       
+      // 👈 תיקון 3: שליפת הנתונים הנכונה מהתגובה
+      const newSavedLocation = response?.data?.data || response?.data || response;
+      
+      // 2. עדכון ה-State המקומי במיקום החדש כדי שיופיע במפה מיד
+      if (newSavedLocation && setLocations) {
+        setLocations(prev => Array.isArray(prev) ? [...prev, { ...newSavedLocation, isCreatedByUser: true }] : [newSavedLocation]);
+      }
+
+      // 3. איפוס וניווט בחזרה למפה
       setPinnedLocation(null);
       reset();
       navigate('/map');
     } catch (error) {
       console.error("Error adding location:", error);
-      setApiError("הוספת המיקום נכשלה.");
+      const serverMessage = error?.response?.data?.message || error?.response?.data?.error || "הוספת המיקום נכשלה. בדוק את חיבור השרת.";
+      setApiError(serverMessage);
     } finally {
       setIsSubmittingState(false);
     }
@@ -123,15 +147,15 @@ const AddLocationForm = () => {
           {geoError && <p style={{ color: 'orange', margin: '5px 0 0 0', fontSize: '13px', fontWeight: 'bold' }}>{geoError}</p>}
         </div>
 
-        {/* באנר חיווי ויזואלי - קורא ישירות מתוך ה-Context */}
+        {/* באנר חיווי ויזואלי למצב הנקודה */}
         <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '6px', textAlign: 'center' }}>
           {pinnedLocation ? (
             <p style={{ color: 'green', margin: 0, fontWeight: 'bold' }}>
-              ✔️ המיקום נקלט: {parseFloat(pinnedLocation.latitude).toFixed(4)}, {parseFloat(pinnedLocation.longitude).toFixed(4)}
+              ✔️ המיקום נקלט: {Number(pinnedLocation.latitude).toFixed(4)}, {Number(pinnedLocation.longitude).toFixed(4)}
             </p>
           ) : (
             <p style={{ color: '#666', margin: 0, fontSize: '14px' }}>
-              טרם נבחר מיקום. השתמש בכפתור למעלה או לחץ על המפה למטה.
+              טרם נבחר מיקום. השתמש בכפתור למעלה או לחץ לחיצה כפולה על המפה למטה.
             </p>
           )}
         </div>
@@ -148,7 +172,7 @@ const AddLocationForm = () => {
           <button 
             type="button" 
             onClick={() => {
-              setPinnedLocation(null); // איפוס הנעץ בביטול
+              setPinnedLocation(null);
               navigate('/map');
             }}
             style={{ padding: '12px 20px', backgroundColor: '#ccc', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
@@ -158,6 +182,7 @@ const AddLocationForm = () => {
         </div>
       </form>
 
+      {/* מפה לבחירת נקודה */}
       <div className='global-map' style={{ marginTop: '20px', height: '350px', width: '100%', border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
         <GlobalMap showOnlyUserLocations={true} />
       </div>
