@@ -26,9 +26,6 @@ function UsersMap() {
   const currentUser = useSelector(state => state.user?.userInfo || state.user?.user || state.user || state.user?.currentUser)
   const userId = currentUser?.id || currentUser?.uid || currentUser?._id || currentUser?.userId || currentUser?.email || currentUser?.name
 
-  console.log("Current User from Redux:", currentUser)
-  console.log("Resolved userId:", userId)
-
   const mapRef = useRef(null)
   const geolocateControlRef = useRef(null)
   const pressTimerRef = useRef(null)
@@ -53,13 +50,13 @@ function UsersMap() {
       const publicRes = await getGeneralData()
       const pubRawData = publicRes?.data?.data || publicRes?.data?.locations || publicRes?.data || []
       const pubDataArray = Array.isArray(pubRawData) ? pubRawData : []
-      setPublicLocations(pubDataArray.map(loc => ({ ...loc, isPublic: true })))
+      setPublicLocations(pubDataArray.map(loc => ({ ...loc, isPublic: true, isCreatedByUser: false })))
 
       if (userId) {
         const userRes = await getUsersLocationsApi(userId)
         const userData = userRes?.data?.data || userRes?.data || userRes || []
         const userArray = Array.isArray(userData) ? userData : []
-        setLocations(userArray.map(loc => ({ ...loc, isCreatedByUser: true })))
+        setLocations(userArray.map(loc => ({ ...loc, isCreatedByUser: true, isPublic: false })))
       }
     } catch (error) {
       console.error(error)
@@ -192,10 +189,14 @@ function UsersMap() {
         if (newLoc) {
           const formattedLoc = {
             ...newLoc,
+            name: formName.trim(),
+            description: formDesc ? formDesc.trim() : "",
+            image_url: newLoc.image_url || null,
             latitude: Number(newLoc.latitude || pinnedLocation.latitude),
             longitude: Number(newLoc.longitude || pinnedLocation.longitude),
             id: newLoc.id || newLoc._id || Date.now(),
-            isCreatedByUser: true
+            isCreatedByUser: true,
+            isPublic: false
           }
           setLocations(prev => [...prev, formattedLoc])
         }
@@ -210,7 +211,7 @@ function UsersMap() {
       setFormImage(null)
       alert("המיקום נשמר בהצלחה!")
       
-      fetchData()
+      // הסרנו את fetchData() כדי שהמפה לא תתרנדר מחדש ותאבד את הפוקוס!
     } catch (error) {
       console.error("Error in handleModalSubmit:", error)
       alert("שמירת המיקום נכשלה. בדוק את הקונסול.")
@@ -254,6 +255,9 @@ function UsersMap() {
       const lat = Number(loc.latitude)
       const lng = Number(loc.longitude)
       if (isNaN(lat) || isNaN(lng)) return null
+
+      const markerIcon = loc.isCreatedByUser ? "📍" : "💧"
+
       return (
         <Marker
           key={loc.id || loc._id || index}
@@ -266,7 +270,9 @@ function UsersMap() {
             setShowAddPrompt(false)
           }}
         >
-          <div style={{ fontSize: "28px", cursor: "pointer", willChange: "transform" }}>📍</div>
+          <div style={{ fontSize: "28px", cursor: "pointer", willChange: "transform" }}>
+            {markerIcon}
+          </div>
         </Marker>
       )
     })
@@ -379,10 +385,15 @@ function UsersMap() {
             closeOnClick={false}
           >
             <div style={{ direction: "rtl", padding: "5px", minWidth: "150px" }}>
+              <span style={{ fontSize: "11px", color: "#666", fontWeight: "bold", display: "block", marginBottom: "2px" }}>
+                {selectedLoc.isCreatedByUser ? "📌 הנקודה שלי (Saved Pins)" : "🌐 מיקום ציבורי (Locations)"}
+              </span>
+
               <h3 style={{ margin: "0 0 5px 0" }}>{selectedLoc.name || selectedLoc.title || "נקודה ללא שם"}</h3>
               {selectedLoc.description && <p style={{ margin: "0 0 10px 0", fontSize: "14px" }}>{selectedLoc.description}</p>}
               {selectedLoc.image_url && <img src={selectedLoc.image_url} alt={selectedLoc.name} style={{ width: "100%", maxHeight: "100px", objectFit: "cover", borderRadius: "4px", marginBottom: "10px" }} />}
-              {!selectedLoc.isPublic && (
+              
+              {selectedLoc.isCreatedByUser && (
                 <div style={{ display: "flex", gap: "5px" }}>
                   <button type="button" onClick={() => openEditModal(selectedLoc)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#ffc107", border: "none", borderRadius: "4px", cursor: "pointer" }}>ערוך</button>
                   <button type="button" onClick={() => onDelete(selectedLoc.id || selectedLoc._id)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#dc3545", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>מחק</button>
