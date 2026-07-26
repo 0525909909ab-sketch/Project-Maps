@@ -2,8 +2,9 @@ import { useForm } from "react-hook-form"
 import { useDispatch, useSelector } from "react-redux"
 import { useNavigate } from "react-router-dom"
 import { useState } from "react"
-import { loginApi } from "../api/auth"
-import { setUser } from "../store/slices/userSlice"
+import { loginApi } from "../../api/auth"
+import { setUser } from "../../store/slices/userSlice"
+import InputField from "../ui/InputField"
 
 const Login = () => {
   const navigate = useNavigate()
@@ -55,40 +56,28 @@ const Login = () => {
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Email */}
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address
-            </label>
-            <input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:outline-none transition-colors ${
-                errors.email ? "border-red-500 focus:ring-red-200" : "border-gray-300 focus:ring-blue-200 focus:border-blue-500"
-              }`}
-              {...register("email", { required: true })}
-            />
-            {errors.email && <p className="text-red-500 text-xs mt-1">The email is required</p>}
-          </div>
+          <InputField
+            id="email"
+            label="Email Address"
+            type="email"
+            placeholder="you@example.com"
+            register={register}
+            validation={{ required: true }}
+            error={errors.email}
+            errorMessage="The email is required"
+          />
 
           {/* Password */}
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:outline-none transition-colors ${
-                errors.password
-                  ? "border-red-500 focus:ring-red-200"
-                  : "border-gray-300 focus:ring-blue-200 focus:border-blue-500"
-              }`}
-              {...register("password", { required: true, minLength: 5 })}
-            />
-            {errors.password && <p className="text-red-500 text-xs mt-1">Password needs to be at least 5 chars</p>}
-          </div>
+          <InputField
+            id="password"
+            label="Password"
+            type="password"
+            placeholder="••••••••"
+            register={register}
+            validation={{ required: true, minLength: 5 }}
+            error={errors.password}
+            errorMessage="Password needs to be at least 5 chars"
+          />
 
           <button
             type="submit"
