@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react"
 import GlobalMap from "./features/map/GlobalMap"
-import mapboxgl from "mapbox-gl"
 import Layout from "./pages/Layout"
-import Login from "./pages/Login"
+
 import { createBrowserRouter, RouterProvider } from "react-router-dom"
 import Home from "./pages/Home"
 import AddLocationForm from "./pages/AddLocationForm"
@@ -11,6 +10,7 @@ import UserProfile from "./pages/userProfile"
 import api from "./api/client" // 👈 משתמשים בלקוח ה-API המרכזי
 import { useDispatch } from "react-redux"
 import { setUser, logoutUser } from "./store/slices/userSlice"
+import Login from "./components/auth/Login"
 
 const myRouter = createBrowserRouter([
   {
@@ -30,6 +30,7 @@ const myRouter = createBrowserRouter([
 function App() {
   const dispatch = useDispatch()
 
+  // 🌟 Restore user session on app load and check if session exists yet
   useEffect(() => {
     const restoreSession = async () => {
       try {

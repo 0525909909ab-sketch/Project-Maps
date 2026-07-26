@@ -1,8 +1,9 @@
 import { createContext, useEffect, useContext, useState } from "react"
+import { addUsersSaveLocationApi } from "../api/favorites"
 
-const AuthContext = createContext(null)
+const MapContext = createContext(null)
 
-export const AuthProvider = ({ children }) => {
+export const MapProvider = ({ children }) => {
   const [userPosition, setUserPosition] = useState(null)
   const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
@@ -41,15 +42,15 @@ export const AuthProvider = ({ children }) => {
     bearing: 0,
   })
 
-  const handlSave = async selectedLoc => {
+  const handleSave = async selectedLoc => {
     await addUsersSaveLocationApi(selectedLoc.id)
     console.log("you saved new place")
   }
 
   return (
-    <AuthContext.Provider
+    <MapContext.Provider
       value={{
-        handlSave,
+        handleSave,
         loading,
         setLoading,
         viewState,
@@ -65,14 +66,14 @@ export const AuthProvider = ({ children }) => {
       }}
     >
       {children}
-    </AuthContext.Provider>
+    </MapContext.Provider>
   )
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext)
+export function useMap() {
+  const context = useContext(MapContext)
   if (!context) {
-    throw new Error("useAuth must be used within AuthProvider")
+    throw new Error("useMap must be used within MapProvider")
   }
   return context
 }
