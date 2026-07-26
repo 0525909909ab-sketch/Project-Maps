@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from "react"
-import { Map, Marker, Popup, Source, Layer, NavigationControl, GeolocateControl } from "react-map-gl/mapbox"
+import React, { useEffect, useState, useRef, useMemo } from "react"
+import Map, { Marker, Popup, NavigationControl, GeolocateControl } from "react-map-gl/mapbox"
 import mapboxgl from "mapbox-gl"
 import "mapbox-gl/dist/mapbox-gl.css"
 
@@ -13,155 +13,128 @@ function GlobalMap() {
   const {
     viewState,
     setViewState,
-    locations,
-    setLocations,
     loading,
     setLoading,
-    findUserLocations,
-    userPosition,
-    skyLayer,
-    handlSave,
   } = useMap()
 
   const mapRef = useRef(null)
+  const geolocateControlRef = useRef(null)
+  const [publicLocations, setPublicLocations] = useState([])
   const [selectedLoc, setSelectedLoc] = useState(null)
+  const [activeFilter, setActiveFilter] = useState("all")
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        const generalRes = await getGeneralData()
-        const generalData = generalRes?.data?.data || generalRes?.data || []
-        setLocations(generalData.map(loc => ({ ...loc, isCreatedByUser: false })))
-      } catch (error) {
-        console.error("שגיאה בטעינת המיקומים מהשרת:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
-  }, [setLocations, setLoading])
-
-  useEffect(() => {
-    if (userPosition?.latitude && userPosition?.longitude && mapRef.current) {
-      mapRef.current.flyTo({
-        center: [userPosition.longitude, userPosition.latitude],
-        zoom: 14,
-        essential: true,
-        duration: 2500,
-      })
-    }
-  }, [userPosition])
-
-  useEffect(() => {
+  const fetchGlobalData = async () => {
     try {
-      findUserLocations()
+      setLoading(true)
+      const publicRes = await getGeneralData()
+      const pubRawData = publicRes?.data?.data || publicRes?.data?.locations || publicRes?.data || []
+      const pubDataArray = Array.isArray(pubRawData) ? pubRawData : []
+      
+      setPublicLocations(pubDataArray)
     } catch (error) {
-      console.log("location error", error)
+      console.error(error)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    fetchGlobalData()
   }, [])
+
+  const handleMapLoad = () => {
+    if (geolocateControlRef.current) {
+      geolocateControlRef.current.trigger()
+    }
+  }
+
+  const filteredLocationsList = useMemo(() => {
+    if (activeFilter === "public") {
+      // מציג נקודות שהן מוגדרות כפומביות או שאין להן משתמש מקושר פרטי
+      return publicLocations.filter(loc => loc.isPublic || loc.type === "public" || !loc.user_id)
+    }
+    return publicLocations
+  }, [publicLocations, activeFilter])
+
+  const renderedMarkers = useMemo(() => {
+    return filteredLocationsList.map((loc, index) => {
+      const lat = Number(loc.latitude || loc.lat)
+      const lng = Number(loc.longitude || loc.lng)
+      if (!lat || !lng) return null
+      return (
+        <Marker
+          key={loc.id || loc._id || index}
+          latitude={lat}
+          longitude={lng}
+          anchor="bottom"
+          onClick={e => {
+            e.originalEvent.stopPropagation()
+            setSelectedLoc(loc)
+          }}
+        >
+          <div style={{ fontSize: "28px", cursor: "pointer", willChange: "transform" }}>💧</div>
+        </Marker>
+      )
+    })
+  }, [filteredLocationsList])
 
   if (loading) return <Loading />
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      <style>{`
-        @keyframes pulse-blue {
-          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0.7); }
-          70% { transform: scale(1); box-shadow: 0 0 0 14px rgba(26, 115, 232, 0); }
-          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0); }
-        }
-        .user-gps-pulse { background: rgba(26, 115, 232, 0.25); border-radius: 50%; animation: pulse-blue 2s infinite; padding: 8px; display: inline-block; }
-      `}</style>
+      {/* בועות סינון (Filter Pills) */}
+      <div style={{ position: "absolute", top: "15px", right: "15px", zIndex: 10, display: "flex", gap: "8px", direction: "rtl" }}>
+        <button 
+          onClick={() => setActiveFilter("all")} 
+          style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "all" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "all" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
+        >
+          הכל
+        </button>
+        <button 
+          onClick={() => setActiveFilter("public")} 
+          style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "public" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "public" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
+        >
+          פומביות בלבד
+        </button>
+      </div>
 
       <Map
         ref={mapRef}
         {...viewState}
+        onLoad={handleMapLoad}
         onMove={evt => setViewState(evt.viewState)}
         mapStyle="mapbox://styles/mapbox/satellite-v9"
         mapboxAccessToken={MAPBOX_TOKEN}
         mapLib={mapboxgl}
+        reuseMaps
         terrain={{ source: "mapbox-dem", exaggeration: 1.5 }}
         style={{ width: "100%", height: "100%" }}
       >
-        <NavigationControl position="top-right" showCompass={false} />
+        <NavigationControl position="top-left" showCompass={false} />
+        
         <GeolocateControl
-          position="top-right"
+          ref={geolocateControlRef}
+          position="top-left"
           positionOptions={{ enableHighAccuracy: true }}
           trackUserLocation={true}
-          showUserLocation={false}
+          showUserLocation={true}
+          showAccuracyCircle={true}
         />
 
-        <Source id="mapbox-dem" type="raster-dem" url="mapbox://mapbox.mapbox-terrain-dem-v1" tileSize={512} />
-        {skyLayer && <Layer {...skyLayer} />}
-
-        {userPosition && (
-          <Marker
-            latitude={userPosition.latitude}
-            longitude={userPosition.longitude}
-            anchor="bottom"
-            pitchAlignment="viewport"
-            style={{ zIndex: 10005 }}
-          >
-            <div className="user-gps-pulse">
-              <div style={{ fontSize: "34px", cursor: "pointer" }}>🚶‍♂️</div>
-            </div>
-          </Marker>
-        )}
-
-        {locations.map((loc, index) => {
-          if (!loc.latitude || !loc.longitude) return null
-          return (
-            <Marker
-              key={index}
-              latitude={Number(loc.latitude)}
-              longitude={Number(loc.longitude)}
-              anchor="bottom"
-              onClick={e => {
-                e.originalEvent.stopPropagation()
-                setSelectedLoc(loc)
-              }}
-            >
-              <div style={{ fontSize: "26px", cursor: "pointer" }}>💧</div>
-            </Marker>
-          )
-        })}
+        {renderedMarkers}
 
         {selectedLoc && (
           <Popup
-            latitude={Number(selectedLoc.latitude)}
-            longitude={Number(selectedLoc.longitude)}
+            latitude={Number(selectedLoc.latitude || selectedLoc.lat)}
+            longitude={Number(selectedLoc.longitude || selectedLoc.lng)}
             anchor="top"
             onClose={() => setSelectedLoc(null)}
+            closeOnClick={false}
           >
-            <div style={{ direction: "rtl", textAlign: "right", fontFamily: "sans-serif", padding: "5px", color: "#333" }}>
-              <h3 style={{ margin: "0 0 5px 0", color: "#1a73e8", fontSize: "16px" }}>💧 {selectedLoc.name}</h3>
-              <p style={{ margin: "5px 0", fontSize: "13px" }}>{selectedLoc.description || "אין תיאור"}</p>
-              <div style={{ marginTop: "12px", borderTop: "1px solid #eee", paddingTop: "8px", display: "flex", gap: "10px" }}>
-                <a
-                  href={`https://google.com{selectedLoc.latitude},${selectedLoc.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "#1a73e8", fontWeight: "bold", textDecoration: "none", fontSize: "13px" }}
-                >
-                  ניווט ➔
-                </a>
-                <button
-                  onClick={() => handlSave(selectedLoc)}
-                  style={{
-                    padding: "4px 8px",
-                    backgroundColor: "#1a73e8",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  שמור מקום
-                </button>
-              </div>
+            <div style={{ direction: "rtl", padding: "5px", minWidth: "150px" }}>
+              <h3 style={{ margin: "0 0 5px 0" }}>{selectedLoc.name || selectedLoc.title || "נקודה ללא שם"}</h3>
+              {selectedLoc.description && <p style={{ margin: "0 0 10px 0", fontSize: "14px" }}>{selectedLoc.description}</p>}
+              {selectedLoc.image_url && <img src={selectedLoc.image_url} alt={selectedLoc.name} style={{ width: "100%", maxHeight: "100px", objectFit: "cover", borderRadius: "4px", marginBottom: "10px" }} />}
             </div>
           </Popup>
         )}

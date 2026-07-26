@@ -7,7 +7,6 @@ export const MapProvider = ({ children }) => {
   const [userPosition, setUserPosition] = useState(null)
   const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
-
   const [pinnedLocation, setPinnedLocation] = useState(null)
 
   const findUserLocations = () => {
@@ -18,7 +17,7 @@ export const MapProvider = ({ children }) => {
           setUserPosition({ latitude, longitude })
         },
         error => {
-          console.log("המשתמש סירב לשתף מיקום או שיש שגיאת רשת, נשארים עם מיקום ברירת המחדל.", error)
+          console.log(error)
         },
       )
     }
@@ -43,8 +42,11 @@ export const MapProvider = ({ children }) => {
   })
 
   const handleSave = async selectedLoc => {
-    await addUsersSaveLocationApi(selectedLoc.id)
-    console.log("you saved new place")
+    try {
+      await addUsersSaveLocationApi(selectedLoc.id)
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   return (

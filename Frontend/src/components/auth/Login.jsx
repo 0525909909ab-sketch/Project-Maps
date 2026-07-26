@@ -1,5 +1,5 @@
 import { useForm } from "react-hook-form"
-import { useDispatch, useSelector } from "react-redux"
+import { useDispatch } from "react-redux"
 import { useNavigate } from "react-router-dom"
 import { useState } from "react"
 import { loginApi } from "../../api/auth"
@@ -23,11 +23,11 @@ const Login = () => {
 
       const response = await loginApi(data.email, data.password)
 
-      // save user in Redux state.
       if (response.data.success && response.data.user) {
         dispatch(
           setUser({
-            name: response.data.user.name || "User", // Supabase - May not have name in object by login.
+            id: response.data.user.id || response.data.user._id,
+            name: response.data.user.name || "User",
             email: response.data.user.email,
           }),
         )
@@ -43,19 +43,16 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 space-y-6">
-        {/* Заголовок */}
         <div className="text-center">
           <h2 className="text-3xl font-extrabold text-gray-900">Welcome Back</h2>
           <p className="text-sm text-gray-500 mt-2">Login to your account to continue</p>
         </div>
 
-        {/* Show: server error block */}
         {apiError && (
           <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center border border-red-200">{apiError}</div>
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Email */}
           <InputField
             id="email"
             label="Email Address"
@@ -67,7 +64,6 @@ const Login = () => {
             errorMessage="The email is required"
           />
 
-          {/* Password */}
           <InputField
             id="password"
             label="Password"
@@ -87,7 +83,6 @@ const Login = () => {
           </button>
         </form>
 
-        {/* Link to registration */}
         <div className="pt-4 text-center border-t border-gray-100">
           <span className="text-gray-600 text-sm">Don't have an account? </span>
           <button

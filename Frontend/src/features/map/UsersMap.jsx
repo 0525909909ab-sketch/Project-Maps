@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useRef, useMemo } from "react"
-import Map, { Marker, Popup, Source, Layer, NavigationControl, GeolocateControl } from "react-map-gl/mapbox"
+import Map, { Marker, Popup, NavigationControl, GeolocateControl } from "react-map-gl/mapbox"
 import mapboxgl from "mapbox-gl"
 import "mapbox-gl/dist/mapbox-gl.css"
+import { useSelector } from "react-redux"
 
-// יבוא פונקציות ה-API
-import { getUsersLocationsApi, addUsersLocationApi, updateUsersLocationApi, deleteUsersLocationApi } from "../../api/general"
-
+import { getUsersLocationsApi, addUsersLocationApi, updateUsersLocationApi, deleteUsersLocationApi, getGeneralData } from "../../api/general"
 import Loading from "../../components/Loading"
 import { useMap } from "../../context/mapContext"
 
@@ -20,33 +19,50 @@ function UsersMap() {
     loading,
     setLoading,
     findUserLocations,
-    userPosition,
-    skyLayer,
     pinnedLocation,
     setPinnedLocation,
   } = useMap()
 
+  const currentUser = useSelector(state => state.user?.userInfo || state.user?.user || state.user || state.user?.currentUser)
+  const userId = currentUser?.id || currentUser?.uid || currentUser?._id || currentUser?.userId || currentUser?.email || currentUser?.name
+
+  console.log("Current User from Redux:", currentUser)
+  console.log("Resolved userId:", userId)
+
   const mapRef = useRef(null)
+  const geolocateControlRef = useRef(null)
+  const pressTimerRef = useRef(null)
+  const startCoordsRef = useRef({ x: 0, y: 0 })
+
+  const [publicLocations, setPublicLocations] = useState([])
+  const [activeFilter, setActiveFilter] = useState("all") 
   const [selectedLoc, setSelectedLoc] = useState(null)
   const [showAddPrompt, setShowAddPrompt] = useState(false)
   const [showModal, setShowModal] = useState(false)
 
-  // מצבי עריכה
   const [isEditing, setIsEditing] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [formName, setFormName] = useState("")
   const [formDesc, setFormDesc] = useState("")
   const [formImage, setFormImage] = useState(null)
 
-  // שליפת המיקומים הפרטיים של המשתמש בלבד בטעינה הראשונית
   const fetchData = async () => {
     try {
       setLoading(true)
-      const userRes = await getUsersLocationsApi()
-      const userData = userRes?.data?.data || userRes?.data || userRes || []
-      setLocations(userData.map(loc => ({ ...loc, isCreatedByUser: true })))
+      
+      const publicRes = await getGeneralData()
+      const pubRawData = publicRes?.data?.data || publicRes?.data?.locations || publicRes?.data || []
+      const pubDataArray = Array.isArray(pubRawData) ? pubRawData : []
+      setPublicLocations(pubDataArray.map(loc => ({ ...loc, isPublic: true })))
+
+      if (userId) {
+        const userRes = await getUsersLocationsApi(userId)
+        const userData = userRes?.data?.data || userRes?.data || userRes || []
+        const userArray = Array.isArray(userData) ? userData : []
+        setLocations(userArray.map(loc => ({ ...loc, isCreatedByUser: true })))
+      }
     } catch (error) {
-      console.error("שגיאה בטעינת מיקומי המשתמש:", error)
+      console.error(error)
     } finally {
       setLoading(false)
     }
@@ -54,19 +70,53 @@ function UsersMap() {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [userId])
 
-  // לחיצה ארוכה בנייד או קליק ימני במחשב
-  const handleMapLongPress = event => {
-    if (event.originalEvent) event.originalEvent.preventDefault()
-    const { lng, lat } = event.lngLat
-    if (lng && lat) {
-      setPinnedLocation({ latitude: lat, longitude: lng })
-      setShowAddPrompt(true)
+  const handleMapLoad = () => {
+    setTimeout(() => {
+      if (geolocateControlRef.current) {
+        geolocateControlRef.current.trigger()
+      }
+    }, 500)
+  }
+
+  const handleTouchStart = e => {
+    const mapInstance = mapRef.current?.getMap()
+    if (!mapInstance || !e.point) return
+
+    startCoordsRef.current = { x: e.point.x, y: e.point.y }
+
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current)
+
+    pressTimerRef.current = setTimeout(() => {
+      const lngLat = mapInstance.unproject([e.point.x, e.point.y])
+      if (lngLat && lngLat.lng !== undefined && lngLat.lat !== undefined) {
+        setPinnedLocation({ latitude: lngLat.lat, longitude: lngLat.lng })
+        setShowAddPrompt(true)
+        setSelectedLoc(null)
+      }
+    }, 600)
+  }
+
+  const handleTouchMove = e => {
+    if (!e.point) return
+    const dx = Math.abs(e.point.x - startCoordsRef.current.x)
+    const dy = Math.abs(e.point.y - startCoordsRef.current.y)
+    if (dx > 8 || dy > 8) {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current)
+        pressTimerRef.current = null
+      }
     }
   }
 
-  // פתיחת מודל להוספת נקודה חדשה
+  const handleTouchEnd = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+  }
+
   const openAddModal = () => {
     setIsEditing(false)
     setEditingId(null)
@@ -76,7 +126,6 @@ function UsersMap() {
     setShowModal(true)
   }
 
-  // פתיחת מודל לעריכת נקודה קיימת לפי ID
   const openEditModal = loc => {
     setIsEditing(true)
     setEditingId(loc.id || loc._id)
@@ -87,14 +136,19 @@ function UsersMap() {
     setSelectedLoc(loc)
   }
 
-  // שמירת נקודה (הוספה חדשה או עדכון לפי ID)
-  const handleModalSubmit = async e => {
-    e.preventDefault()
-    if (!formName.trim()) return
+  const handleModalSubmit = async () => {
+    if (!formName || !formName.trim()) {
+      alert("נא להזין שם למקום")
+      return
+    }
+
+    if (!userId) {
+      alert("שגיאה: משתמש לא מזוהה (חסר מזהה משתמש)")
+      return
+    }
 
     try {
       if (isEditing) {
-        // ✏️ בוקר/עדכון - תמיד בפורמט FormData להתאמה ל-FastAPI Form(...)
         const formData = new FormData()
         formData.append("name", formName.trim())
         formData.append("description", formDesc.trim())
@@ -103,11 +157,8 @@ function UsersMap() {
         }
 
         const response = await updateUsersLocationApi(editingId, formData)
+        const updatedData = response?.data?.data || response?.data
 
-        // שליפת הנתונים שהוחזרו מהשרת (במידה ועודכנה תמונה חדשה)
-        const updatedData = response?.data?.data?.[0] || response?.data?.[0]
-
-        // עדכון מיידי של המצב במסך (State) ללא טעינה מחדש של השרת
         setLocations(prev =>
           prev.map(loc => {
             if ((loc.id || loc._id) === editingId) {
@@ -122,24 +173,34 @@ function UsersMap() {
           }),
         )
       } else {
-        // ➕ הוספת נקודה חדשה
-        if (!pinnedLocation) return
+        if (!pinnedLocation) {
+          alert("נא לבחור נקודה על המפה תחילה")
+          return
+        }
+        
         const formData = new FormData()
+        formData.append("user_id", String(userId))
         formData.append("name", formName.trim())
-        formData.append("description", formDesc.trim())
+        formData.append("description", formDesc ? formDesc.trim() : "")
         formData.append("latitude", String(pinnedLocation.latitude))
         formData.append("longitude", String(pinnedLocation.longitude))
         if (formImage) formData.append("image", formImage)
 
         const response = await addUsersLocationApi(formData)
-        const newLoc = response?.data?.data?.[0] || response?.data?.[0]
+        const newLoc = response?.data?.data || response?.data || response
 
         if (newLoc) {
-          setLocations(prev => [...prev, { ...newLoc, isCreatedByUser: true }])
+          const formattedLoc = {
+            ...newLoc,
+            latitude: Number(newLoc.latitude || pinnedLocation.latitude),
+            longitude: Number(newLoc.longitude || pinnedLocation.longitude),
+            id: newLoc.id || newLoc._id || Date.now(),
+            isCreatedByUser: true
+          }
+          setLocations(prev => [...prev, formattedLoc])
         }
       }
 
-      // איפוס וסגירת מודלים בלבד (ללא קריאה מחדש ל-fetchData!)
       setShowModal(false)
       setShowAddPrompt(false)
       setPinnedLocation(null)
@@ -147,12 +208,15 @@ function UsersMap() {
       setFormName("")
       setFormDesc("")
       setFormImage(null)
+      alert("המיקום נשמר בהצלחה!")
+      
+      fetchData()
     } catch (error) {
-      console.error("שגיאה בשמירת/עדכון הנקודה:", error)
+      console.error("Error in handleModalSubmit:", error)
+      alert("שמירת המיקום נכשלה. בדוק את הקונסול.")
     }
   }
 
-  // מחיקת נקודה לפי ID
   const onDelete = async locationId => {
     if (window.confirm("האם אתה בטוח שברצונך למחוק נקודה זו?")) {
       try {
@@ -160,21 +224,10 @@ function UsersMap() {
         setLocations(prev => prev.filter(loc => (loc.id || loc._id) !== locationId))
         setSelectedLoc(null)
       } catch (err) {
-        console.error("שגיאה במחיקה:", err)
+        console.error(err)
       }
     }
   }
-
-  useEffect(() => {
-    if (userPosition?.latitude && userPosition?.longitude && mapRef.current) {
-      mapRef.current.flyTo({
-        center: [userPosition.longitude, userPosition.latitude],
-        zoom: 14,
-        essential: true,
-        duration: 2500,
-      })
-    }
-  }, [userPosition])
 
   useEffect(() => {
     try {
@@ -184,305 +237,189 @@ function UsersMap() {
     }
   }, [])
 
-  // 📍 ייעול ואופטימיזציה: רינדור המרקרים נשמר בזיכרון (useMemo)
-  // ומתעדכן רק בעת שינוי ממשי במערך ה-locations
+  const filteredLocationsList = useMemo(() => {
+    let combined = []
+    if (activeFilter === "all") {
+      combined = [...locations, ...publicLocations]
+    } else if (activeFilter === "mine") {
+      combined = locations.filter(loc => loc.isCreatedByUser)
+    } else if (activeFilter === "shared") {
+      combined = publicLocations
+    }
+    return combined
+  }, [locations, publicLocations, activeFilter])
+
   const renderedMarkers = useMemo(() => {
-    return locations.map((loc, index) => {
-      if (!loc.latitude || !loc.longitude) return null
+    return filteredLocationsList.map((loc, index) => {
+      const lat = Number(loc.latitude)
+      const lng = Number(loc.longitude)
+      if (isNaN(lat) || isNaN(lng)) return null
       return (
         <Marker
           key={loc.id || loc._id || index}
-          latitude={Number(loc.latitude)}
-          longitude={Number(loc.longitude)}
+          latitude={lat}
+          longitude={lng}
           anchor="bottom"
           onClick={e => {
             e.originalEvent.stopPropagation()
             setSelectedLoc(loc)
+            setShowAddPrompt(false)
           }}
         >
-          <div style={{ fontSize: "28px", cursor: "pointer" }}>📍</div>
+          <div style={{ fontSize: "28px", cursor: "pointer", willChange: "transform" }}>📍</div>
         </Marker>
       )
     })
-  }, [locations])
+  }, [filteredLocationsList])
 
   if (loading) return <Loading />
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      <style>{`
-        @keyframes pulse-blue {
-          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0.7); }
-          70% { transform: scale(1); box-shadow: 0 0 0 14px rgba(26, 115, 232, 0); }
-          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0); }
-        }
-        .user-gps-pulse { background: rgba(26, 115, 232, 0.25); border-radius: 50%; animation: pulse-blue 2s infinite; padding: 8px; display: inline-block; }
-      `}</style>
+      <div style={{ position: "absolute", top: "15px", right: "15px", zIndex: 10, display: "flex", gap: "8px", direction: "rtl" }}>
+        <button 
+          onClick={() => setActiveFilter("all")} 
+          style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "all" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "all" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
+        >
+          הכל
+        </button>
+        <button 
+          onClick={() => setActiveFilter("shared")} 
+          style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "shared" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "shared" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
+        >
+          משותפים / פומביות
+        </button>
+        <button 
+          onClick={() => setActiveFilter("mine")} 
+          style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "mine" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "mine" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
+        >
+          שלי
+        </button>
+      </div>
 
       <Map
         ref={mapRef}
         {...viewState}
-        onContextMenu={handleMapLongPress}
+        onLoad={handleMapLoad}
         onMove={evt => setViewState(evt.viewState)}
+        onMouseDown={handleTouchStart}
+        onMouseMove={handleTouchMove}
+        onMouseUp={handleTouchEnd}
+        onContextMenu={e => e.originalEvent.preventDefault()}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         mapStyle="mapbox://styles/mapbox/satellite-v9"
         mapboxAccessToken={MAPBOX_TOKEN}
         mapLib={mapboxgl}
+        reuseMaps
         terrain={{ source: "mapbox-dem", exaggeration: 1.5 }}
         style={{ width: "100%", height: "100%" }}
       >
-        <NavigationControl position="top-right" showCompass={false} />
+        <NavigationControl position="top-left" showCompass={false} />
+        
         <GeolocateControl
-          position="top-right"
+          ref={geolocateControlRef}
+          position="top-left"
           positionOptions={{ enableHighAccuracy: true }}
           trackUserLocation={true}
-          showUserLocation={false}
+          showUserLocation={true}
+          showAccuracyCircle={true}
         />
 
-        {/* סמן של לחיצה על המפה ליצירת נקודה */}
-        {pinnedLocation && (
-          <Marker latitude={pinnedLocation.latitude} longitude={pinnedLocation.longitude}>
-            <div style={{ color: "red", fontSize: "32px", cursor: "pointer" }} onClick={() => setShowAddPrompt(true)}>
-              📍
-            </div>
-          </Marker>
-        )}
-
         {pinnedLocation && showAddPrompt && (
-          <Popup
-            latitude={pinnedLocation.latitude}
-            longitude={pinnedLocation.longitude}
-            anchor="top"
-            onClose={() => setShowAddPrompt(false)}
-            closeOnClick={false}
-          >
-            <div style={{ direction: "rtl", textAlign: "center", padding: "5px", fontFamily: "sans-serif" }}>
-              <p style={{ margin: "0 0 10px 0", fontSize: "13px", fontWeight: "bold" }}>נבחר מיקום חדש</p>
-              <button
+          <>
+            <Marker 
+              latitude={pinnedLocation.latitude} 
+              longitude={pinnedLocation.longitude} 
+              anchor="bottom"
+            >
+              <div 
+                style={{ fontSize: "32px", cursor: "pointer", filter: "drop-shadow(0 0 3px red)" }} 
                 onClick={openAddModal}
-                style={{
-                  padding: "6px 12px",
-                  backgroundColor: "#34a853",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontSize: "12px",
-                  fontWeight: "bold",
-                }}
               >
-                ➕ הוסף נקודה
-              </button>
-            </div>
-          </Popup>
+                📍
+              </div>
+            </Marker>
+
+            <Popup
+              latitude={pinnedLocation.latitude}
+              longitude={pinnedLocation.longitude}
+              anchor="top"
+              onClose={() => {
+                setShowAddPrompt(false)
+                setPinnedLocation(null)
+              }}
+              closeOnClick={false}
+            >
+              <div style={{ direction: "rtl", textAlign: "center", padding: "5px" }}>
+                <button 
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation()
+                    openAddModal()
+                  }} 
+                  style={{ padding: "5px 10px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  הוסף מיקום כאן
+                </button>
+              </div>
+            </Popup>
+          </>
         )}
 
-        <Source id="mapbox-dem" type="raster-dem" url="mapbox://mapbox.mapbox-terrain-dem-v1" tileSize={512} />
-        {skyLayer && <Layer {...skyLayer} />}
-
-        {/* מיקום המשתמש הנוכחי */}
-        {userPosition && (
-          <Marker
-            latitude={userPosition.latitude}
-            longitude={userPosition.longitude}
-            anchor="bottom"
-            pitchAlignment="viewport"
-            style={{ zIndex: 10005 }}
-          >
-            <div className="user-gps-pulse">
-              <div style={{ fontSize: "34px", cursor: "pointer" }}>🚶‍♂️</div>
-            </div>
-          </Marker>
-        )}
-
-        {/* הצגת כל ה-Markers הממוטבים מה-useMemo */}
         {renderedMarkers}
 
-        {/* חלונית פרטים צפה של נקודה שנבחרה */}
         {selectedLoc && (
           <Popup
             latitude={Number(selectedLoc.latitude)}
             longitude={Number(selectedLoc.longitude)}
             anchor="top"
             onClose={() => setSelectedLoc(null)}
+            closeOnClick={false}
           >
-            <div style={{ direction: "rtl", textAlign: "right", fontFamily: "sans-serif", padding: "5px", width: "210px" }}>
-              {(selectedLoc.image_url || selectedLoc.imageUrl || selectedLoc.image) && (
-                <img
-                  src={selectedLoc.image_url || selectedLoc.imageUrl || selectedLoc.image}
-                  alt={selectedLoc.name}
-                  style={{ width: "100%", height: "110px", objectFit: "cover", borderRadius: "4px", marginBottom: "8px" }}
-                />
+            <div style={{ direction: "rtl", padding: "5px", minWidth: "150px" }}>
+              <h3 style={{ margin: "0 0 5px 0" }}>{selectedLoc.name || selectedLoc.title || "נקודה ללא שם"}</h3>
+              {selectedLoc.description && <p style={{ margin: "0 0 10px 0", fontSize: "14px" }}>{selectedLoc.description}</p>}
+              {selectedLoc.image_url && <img src={selectedLoc.image_url} alt={selectedLoc.name} style={{ width: "100%", maxHeight: "100px", objectFit: "cover", borderRadius: "4px", marginBottom: "10px" }} />}
+              {!selectedLoc.isPublic && (
+                <div style={{ display: "flex", gap: "5px" }}>
+                  <button type="button" onClick={() => openEditModal(selectedLoc)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#ffc107", border: "none", borderRadius: "4px", cursor: "pointer" }}>ערוך</button>
+                  <button type="button" onClick={() => onDelete(selectedLoc.id || selectedLoc._id)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#dc3545", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>מחק</button>
+                </div>
               )}
-              <h3 style={{ margin: "0 0 5px 0", color: "#1a73e8", fontSize: "15px" }}>📍 {selectedLoc.name}</h3>
-              <p style={{ margin: "5px 0", fontSize: "12px", color: "#555" }}>{selectedLoc.description || "אין תיאור"}</p>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "6px",
-                  marginTop: "10px",
-                  borderTop: "1px solid #eee",
-                  paddingTop: "6px",
-                  alignItems: "center",
-                }}
-              >
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${selectedLoc.latitude},${selectedLoc.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "#1a73e8", textDecoration: "none", fontSize: "12px", fontWeight: "bold" }}
-                >
-                  ניווט ➔
-                </a>
-                <button
-                  onClick={() => openEditModal(selectedLoc)}
-                  style={{
-                    padding: "2px 6px",
-                    backgroundColor: "#fbbc05",
-                    color: "black",
-                    border: "none",
-                    borderRadius: "3px",
-                    cursor: "pointer",
-                    fontSize: "11px",
-                    marginRight: "auto",
-                  }}
-                >
-                  ✏️ ערוך
-                </button>
-                <button
-                  onClick={() => onDelete(selectedLoc.id || selectedLoc._id)}
-                  style={{
-                    padding: "2px 6px",
-                    backgroundColor: "#d93025",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "3px",
-                    cursor: "pointer",
-                    fontSize: "11px",
-                  }}
-                >
-                  🗑️ מחק
-                </button>
-              </div>
             </div>
           </Popup>
         )}
       </Map>
 
-      {/* מודל להוספה / עריכה */}
       {showModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            backgroundColor: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 99999,
-            direction: "rtl",
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "white",
-              padding: "20px",
-              borderRadius: "8px",
-              maxWidth: "350px",
-              width: "100%",
-              fontFamily: "sans-serif",
-              textAlign: "right",
-              margin: "auto",
-            }}
-          >
-            <h3 style={{ margin: "0 0 15px 0", fontSize: "16px", fontWeight: "bold" }}>
-              {isEditing ? "✏️ עריכת מיקום" : "📍 הוספת מיקום חדש"}
-            </h3>
-            <form onSubmit={handleModalSubmit}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: "bold", marginBottom: "4px" }}>שם המקום:</label>
-                <input
-                  type="text"
-                  required
-                  style={{
-                    width: "100%",
-                    padding: "6px",
-                    boxSizing: "border-box",
-                    border: "1px solid #ccc",
-                    borderRadius: "4px",
-                  }}
-                  value={formName}
-                  onChange={e => setFormName(e.target.value)}
-                />
-              </div>
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", backgroundColor: "white", padding: "20px", borderRadius: "8px", boxShadow: "0 4px 15px rgba(0,0,0,0.2)", zIndex: 1000, minWidth: "280px", direction: "rtl" }}>
+          <h3 style={{ marginTop: 0 }}>{isEditing ? "עריכת מיקום" : "הוספת מיקום חדש"}</h3>
+          <div>
+            <div style={{ marginBottom: "10px" }}>
+              <label style={{ display: "block", marginBottom: "3px" }}>שם המקום:</label>
+              <input type="text" value={formName} onChange={e => setFormName(e.target.value)} style={{ width: "100%", padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }} />
+            </div>
 
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: "bold", marginBottom: "4px" }}>תיאור:</label>
-                <textarea
-                  rows="3"
-                  style={{
-                    width: "100%",
-                    padding: "6px",
-                    boxSizing: "border-box",
-                    border: "1px solid #ccc",
-                    borderRadius: "4px",
-                  }}
-                  value={formDesc}
-                  onChange={e => setFormDesc(e.target.value)}
-                />
-              </div>
+            <div style={{ marginBottom: "10px" }}>
+              <label style={{ display: "block", marginBottom: "3px" }}>תיאור:</label>
+              <textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} style={{ width: "100%", padding: "6px", border: "1px solid #ccc", borderRadius: "4px", minHeight: "60px" }} />
+            </div>
 
-              <div style={{ marginBottom: "15px" }}>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: "bold", marginBottom: "4px" }}>
-                  תמונה של המקום:
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={e => setFormImage(e.target.files[0])}
-                  style={{ fontSize: "12px" }}
-                />
-              </div>
+            <div style={{ marginBottom: "15px" }}>
+              <label style={{ display: "block", marginBottom: "3px" }}>תמונה:</label>
+              <input type="file" accept="image/*" onChange={e => setFormImage(e.target.files[0])} style={{ width: "100%" }} />
+            </div>
 
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 1,
-                    padding: "8px",
-                    backgroundColor: "#28a745",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {isEditing ? "עדכן" : "שמור"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false)
-                    setPinnedLocation(null)
-                    setShowAddPrompt(false)
-                  }}
-                  style={{
-                    padding: "8px",
-                    backgroundColor: "#6c757d",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ביטול
-                </button>
-              </div>
-            </form>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setShowModal(false)} style={{ padding: "6px 12px", border: "1px solid #ccc", borderRadius: "4px", background: "none", cursor: "pointer" }}>
+                ביטול
+              </button>
+              <button type="button" onClick={handleModalSubmit} style={{ padding: "6px 12px", backgroundColor: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>
+                שמור
+              </button>
+            </div>
           </div>
         </div>
       )}

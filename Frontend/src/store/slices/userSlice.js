@@ -1,6 +1,7 @@
 import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
+  id: null, // הוספת שדה מזהה
   name: null,
   email: null,
   isAuthenticated: false,
@@ -10,14 +11,14 @@ const userSlice = createSlice({
   name: 'user',
   initialState,
   reducers: {
-    // Fnc to save user in case of login and registration.
     setUser: (state, action) => {
+      state.id = action.payload.id || action.payload._id; 
       state.name = action.payload.name;
       state.email = action.payload.email;
       state.isAuthenticated = true;
     },
-    // Cleanup function for logout.
     logoutUser: (state) => {
+      state.id = null; 
       state.name = null;
       state.email = null;
       state.isAuthenticated = false;
