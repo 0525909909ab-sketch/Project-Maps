@@ -30,7 +30,10 @@ def get_all_users_locations(user_id: str = Query(...)):
             .execute()
         )
         my_pins = my_pins_res.data if my_pins_res.data else []
+    except Exception:
+        my_pins = []
 
+    try:
         shared_by_res = (
             supabase.table("map_members")
             .select("map_id")
@@ -38,11 +41,14 @@ def get_all_users_locations(user_id: str = Query(...)):
             .execute()
         )
         allowed_owners = [
-            item["map_id"] for item in shared_by_res.data
-        ] if shared_by_res.data else []
+            item["map_id"] for item in (shared_by_res.data or []) if item.get("map_id") is not None
+        ]
+    except Exception:
+        allowed_owners = []
 
-        shared_pins = []
-        if allowed_owners:
+    shared_pins = []
+    if allowed_owners:
+        try:
             shared_pins_res = (
                 supabase.table("usersLocations")
                 .select("*")
@@ -50,16 +56,43 @@ def get_all_users_locations(user_id: str = Query(...)):
                 .execute()
             )
             shared_pins = shared_pins_res.data if shared_pins_res.data else []
+        except Exception:
+            shared_pins = []
 
-        all_accessible_pins = my_pins + shared_pins
-        seen_ids = set()
-        unique_pins = []
-        for pin in all_accessible_pins:
-            if pin["id"] not in seen_ids:
-                seen_ids.add(pin["id"])
-                unique_pins.append(pin)
+    all_accessible_pins = my_pins + shared_pins
+    seen_ids = set()
+    unique_pins = []
+    for pin in all_accessible_pins:
+        pin_id = pin.get("id")
+        if pin_id is not None and pin_id not in seen_ids:
+            seen_ids.add(pin_id)
+            unique_pins.append(pin)
 
-        return unique_pins
+    return {"success": True, "data": unique_pins}
+
+
+@users_locations_router.get("/saveLocations")
+def get_saved_locations(user_id: str = Query(...)):
+    try:
+        saved_res = (
+            supabase.table("saved_pins")
+            .select("location_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        saved_data = saved_res.data if saved_res.data else []
+        location_ids = [row["location_id"] for row in saved_data]
+
+        if not location_ids:
+            return {"success": True, "data": []}
+
+        locations_res = (
+            supabase.table("usersLocations")
+            .select("*")
+            .in_("id", location_ids)
+            .execute()
+        )
+        return {"success": True, "data": locations_res.data if locations_res.data else []}
     except Exception as e:
         raise HTTPException(
             status_code=400, detail=f"Database fetch crash: {str(e)}"

@@ -24,25 +24,24 @@ class UserLoginSchema(BaseModel):
 
 
 def verify_supabase_user(request: Request) -> str:
-    # 1. The browser automatically attaches cookies to the request
-    # 'sb_access_token' is the standard name Supabase uses, or whatever name you choose when setting the cookie
     token = request.cookies.get("sb_access_token")
+
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
 
     if not token:
         raise HTTPException(
-            status_code=401, detail="Unauthorized: Missing session cookie"
+            status_code=401, detail="Unauthorized: Missing session token"
         )
 
     try:
-        # 2. Validate the cookie token directly with Supabase
         user_response = supabase.auth.get_user(token)
-        return (
-            user_response.user
-        )  # Returns user -> user.id returns the secure true user UUID string
+        return user_response.user
 
     except Exception as e:
         raise HTTPException(
-            status_code=401, detail=f"Unauthorized: Invalid cookie session ({str(e)})"
+            status_code=401, detail=f"Unauthorized: Invalid session ({str(e)})"
         )
 
 
