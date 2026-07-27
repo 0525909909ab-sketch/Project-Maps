@@ -12,15 +12,22 @@ const SavedLocationsSection = ({ locations, expandedIds, onToggle }) => {
         <p style={{ color: "#666" }}>אין מועדפים שמורים.</p>
       ) : (
         locations.map(item => {
-          const place = item.usersLocations || item.locations || {}
-          const itemKey = `saved-${item.id}`
+          const place = item?.usersLocations || item?.locations || item?.location || item || {}
+          const itemKey = `saved-${item?.id || place?.id || Math.random()}`
+          const title = item?.name || place?.name || item?.address || place?.address || "נקודה שמורה"
+          const address = item?.address || place?.address || null
+          const coordinates = item?.latitude != null && item?.longitude != null
+            ? `${item.latitude}, ${item.longitude}`
+            : place?.latitude != null && place?.longitude != null
+              ? `${place.latitude}, ${place.longitude}`
+              : null
 
           return (
             <LocationCard
               key={itemKey}
-              title={place.name || place.address || "נקודה שמורה"}
-              address={place.address}
-              coordinates={!place.address ? `${place.latitude}, ${place.longitude}` : null}
+              title={title}
+              address={address}
+              coordinates={coordinates}
               isExpanded={!!expandedIds[itemKey]}
               onToggle={() => onToggle(itemKey)}
               isCreatedByUser={false}

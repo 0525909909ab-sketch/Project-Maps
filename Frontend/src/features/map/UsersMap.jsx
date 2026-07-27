@@ -1,12 +1,15 @@
-import React, { useEffect, useState, useRef, useMemo } from "react"
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import Map, { Marker, Popup, NavigationControl, GeolocateControl } from "react-map-gl/mapbox"
 import mapboxgl from "mapbox-gl"
 import "mapbox-gl/dist/mapbox-gl.css"
 import { useSelector } from "react-redux"
 
 import { getUsersLocationsApi, addUsersLocationApi, updateUsersLocationApi, deleteUsersLocationApi, getGeneralData } from "../../api/general"
+import api from "../../api/client"
+import { addUsersSaveLocationApi } from "../../api/favorites"
 import Loading from "../../components/Loading"
 import { useMap } from "../../context/mapContext"
+import { getCurrentUserId } from "../../utils/getCurrentUserId"
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -23,8 +26,16 @@ function UsersMap() {
     setPinnedLocation,
   } = useMap()
 
-  const currentUser = useSelector(state => state.user?.userInfo || state.user?.user || state.user || state.user?.currentUser)
-  const userId = currentUser?.id || currentUser?.uid || currentUser?._id || currentUser?.userId || currentUser?.email || currentUser?.name
+  const userState = useSelector(state => state.user) || useSelector(state => state.auth)
+
+  const userId =
+    userState?.id ||
+    userState?._id ||
+    userState?.userInfo?.id ||
+    userState?.userInfo?._id ||
+    userState?.user?.id ||
+    userState?.user?._id ||
+    getCurrentUserId()
 
   const mapRef = useRef(null)
   const geolocateControlRef = useRef(null)
@@ -32,7 +43,7 @@ function UsersMap() {
   const startCoordsRef = useRef({ x: 0, y: 0 })
 
   const [publicLocations, setPublicLocations] = useState([])
-  const [activeFilter, setActiveFilter] = useState("all") 
+  const [activeFilter, setActiveFilter] = useState("all")
   const [selectedLoc, setSelectedLoc] = useState(null)
   const [showAddPrompt, setShowAddPrompt] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -43,38 +54,41 @@ function UsersMap() {
   const [formDesc, setFormDesc] = useState("")
   const [formImage, setFormImage] = useState(null)
 
-  const fetchData = async () => {
+  const fetchAllData = useCallback(async () => {
     try {
       setLoading(true)
-      
-      const publicRes = await getGeneralData()
-      const pubRawData = publicRes?.data?.data || publicRes?.data?.locations || publicRes?.data || []
-      const pubDataArray = Array.isArray(pubRawData) ? pubRawData : []
-      setPublicLocations(pubDataArray.map(loc => ({ ...loc, isPublic: true, isCreatedByUser: false })))
+      const [publicRes, userRes] = await Promise.all([
+        getGeneralData().catch(() => null),
+        userId ? getUsersLocationsApi(userId).catch(() => null) : Promise.resolve(null)
+      ])
 
-      if (userId) {
-        const userRes = await getUsersLocationsApi(userId)
-        const userData = userRes?.data?.data || userRes?.data || userRes || []
-        const userArray = Array.isArray(userData) ? userData : []
-        setLocations(userArray.map(loc => ({ ...loc, isCreatedByUser: true, isPublic: false })))
+      if (publicRes) {
+        const pubRawData = publicRes?.data?.data || publicRes?.data?.locations || publicRes?.data || []
+        setPublicLocations(Array.isArray(pubRawData) ? pubRawData.map(loc => ({ ...loc, isPublic: true, isCreatedByUser: false })) : [])
+      }
+
+      if (userRes) {
+        const userPayload = userRes?.data?.data || userRes?.data || []
+        const userData = Array.isArray(userPayload) ? userPayload : []
+        setLocations(userData.map(loc => ({ ...loc, isCreatedByUser: true, isPublic: false })))
       }
     } catch (error) {
-      console.error(error)
+      console.error("Error fetching data:", error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [userId, setLocations, setLoading])
 
   useEffect(() => {
-    fetchData()
-  }, [userId])
+    fetchAllData()
+  }, [fetchAllData])
 
   const handleMapLoad = () => {
     setTimeout(() => {
       if (geolocateControlRef.current) {
         geolocateControlRef.current.trigger()
       }
-    }, 500)
+    }, 600)
   }
 
   const handleTouchStart = e => {
@@ -82,7 +96,6 @@ function UsersMap() {
     if (!mapInstance || !e.point) return
 
     startCoordsRef.current = { x: e.point.x, y: e.point.y }
-
     if (pressTimerRef.current) clearTimeout(pressTimerRef.current)
 
     pressTimerRef.current = setTimeout(() => {
@@ -139,8 +152,10 @@ function UsersMap() {
       return
     }
 
-    if (!userId) {
-      alert("שגיאה: משתמש לא מזוהה (חסר מזהה משתמש)")
+    const currentUserId = userId || getCurrentUserId()
+
+    if (!currentUserId) {
+      alert("שגיאה: משתמש לא מזוהה")
       return
     }
 
@@ -149,9 +164,7 @@ function UsersMap() {
         const formData = new FormData()
         formData.append("name", formName.trim())
         formData.append("description", formDesc.trim())
-        if (formImage) {
-          formData.append("image", formImage)
-        }
+        if (formImage) formData.append("image", formImage)
 
         const response = await updateUsersLocationApi(editingId, formData)
         const updatedData = response?.data?.data || response?.data
@@ -174,14 +187,17 @@ function UsersMap() {
           alert("נא לבחור נקודה על המפה תחילה")
           return
         }
-        
+
         const formData = new FormData()
-        formData.append("user_id", String(userId))
+        formData.append("user_id", String(currentUserId))
         formData.append("name", formName.trim())
         formData.append("description", formDesc ? formDesc.trim() : "")
-        formData.append("latitude", String(pinnedLocation.latitude))
-        formData.append("longitude", String(pinnedLocation.longitude))
-        if (formImage) formData.append("image", formImage)
+        formData.append("latitude", String(Number(pinnedLocation.latitude)))
+        formData.append("longitude", String(Number(pinnedLocation.longitude)))
+
+        if (formImage) {
+          formData.append("image", formImage)
+        }
 
         const response = await addUsersLocationApi(formData)
         const newLoc = response?.data?.data || response?.data || response
@@ -192,9 +208,9 @@ function UsersMap() {
             name: formName.trim(),
             description: formDesc ? formDesc.trim() : "",
             image_url: newLoc.image_url || null,
-            latitude: Number(newLoc.latitude || pinnedLocation.latitude),
-            longitude: Number(newLoc.longitude || pinnedLocation.longitude),
-            id: newLoc.id || newLoc._id || Date.now(),
+            latitude: Number(newLoc.latitude ?? pinnedLocation.latitude),
+            longitude: Number(newLoc.longitude ?? pinnedLocation.longitude),
+            id: newLoc.id || newLoc._id || newLoc.location_id || Date.now(),
             isCreatedByUser: true,
             isPublic: false
           }
@@ -210,11 +226,73 @@ function UsersMap() {
       setFormDesc("")
       setFormImage(null)
       alert("המיקום נשמר בהצלחה!")
-      
-      // הסרנו את fetchData() כדי שהמפה לא תתרנדר מחדש ותאבד את הפוקוס!
     } catch (error) {
-      console.error("Error in handleModalSubmit:", error)
-      alert("שמירת המיקום נכשלה. בדוק את הקונסול.")
+      console.error("Error in handleModalSubmit:", error.response?.data || error)
+      alert(`שמירת המיקום נכשלה: ${error.response?.data?.detail || error.message || "שגיאה לא ידועה"}`)
+    }
+  }
+
+  const handleAddToFavorites = async (loc) => {
+    try {
+      const currentUserId = userId || getCurrentUserId()
+
+      if (!currentUserId) {
+        alert("שגיאה: משתמש לא מזוהה")
+        return
+      }
+
+      const targetId = loc?.id || loc?._id || loc?.location_id || loc?.place_id
+
+      if (!targetId) {
+        alert("שגיאה: מזהה מיקום חסר באובייקט הנבחר")
+        return
+      }
+
+      const payload = {
+        ...(targetId != null && String(targetId).trim() !== "" && !Number.isNaN(Number(targetId))
+          ? { location_id: Number(targetId) }
+          : {}),
+        ...(loc?.latitude != null ? { latitude: Number(loc.latitude) } : {}),
+        ...(loc?.longitude != null ? { longitude: Number(loc.longitude) } : {}),
+      }
+
+      const savedItem = {
+        id: payload.location_id ?? payload.user_location_id ?? payload.id ?? Date.now(),
+        name: loc?.name || loc?.title || "נקודה שמורה",
+        address: loc?.address || null,
+        description: loc?.description || null,
+        latitude: payload.latitude ?? loc?.latitude ?? null,
+        longitude: payload.longitude ?? loc?.longitude ?? null,
+        image_url: loc?.image_url || null,
+        location: {
+          id: payload.location_id ?? payload.user_location_id ?? payload.id ?? Date.now(),
+          name: loc?.name || loc?.title || "נקודה שמורה",
+          address: loc?.address || null,
+          description: loc?.description || null,
+          latitude: payload.latitude ?? loc?.latitude ?? null,
+          longitude: payload.longitude ?? loc?.longitude ?? null,
+          image_url: loc?.image_url || null,
+        },
+      }
+
+      const res = await addUsersSaveLocationApi(payload, currentUserId)
+      const responseData = res?.data?.data || res?.data || res
+      const status = responseData?.status || res?.data?.status || res?.status
+      const message = status === "already_exists"
+        ? "הנקודה כבר שמורה במועדפים שלך"
+        : "הנקודה נוספה בהצלחה למועדפים שלי!"
+
+      alert(message)
+      try {
+        localStorage.setItem("favorites:updated", String(Date.now()))
+        window.dispatchEvent(new CustomEvent("favorites-updated", { detail: { savedItem } }))
+      } catch (err) {
+        console.error(err)
+      }
+      setSelectedLoc(null)
+    } catch (error) {
+      console.error("Error adding to favorites:", error.response?.data || error)
+      alert(`הוספה למועדפים נכשלה: ${error.response?.data?.detail || error.message || "שגיאה"}`)
     }
   }
 
@@ -236,18 +314,12 @@ function UsersMap() {
     } catch (error) {
       console.log(error)
     }
-  }, [])
+  }, [findUserLocations])
 
   const filteredLocationsList = useMemo(() => {
-    let combined = []
-    if (activeFilter === "all") {
-      combined = [...locations, ...publicLocations]
-    } else if (activeFilter === "mine") {
-      combined = locations.filter(loc => loc.isCreatedByUser)
-    } else if (activeFilter === "shared") {
-      combined = publicLocations
-    }
-    return combined
+    if (activeFilter === "mine") return locations.filter(loc => loc.isCreatedByUser)
+    if (activeFilter === "shared") return publicLocations
+    return [...locations, ...publicLocations]
   }, [locations, publicLocations, activeFilter])
 
   const renderedMarkers = useMemo(() => {
@@ -283,20 +355,20 @@ function UsersMap() {
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
       <div style={{ position: "absolute", top: "15px", right: "15px", zIndex: 10, display: "flex", gap: "8px", direction: "rtl" }}>
-        <button 
-          onClick={() => setActiveFilter("all")} 
+        <button
+          onClick={() => setActiveFilter("all")}
           style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "all" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "all" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
         >
           הכל
         </button>
-        <button 
-          onClick={() => setActiveFilter("shared")} 
+        <button
+          onClick={() => setActiveFilter("shared")}
           style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "shared" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "shared" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
         >
           משותפים / פומביות
         </button>
-        <button 
-          onClick={() => setActiveFilter("mine")} 
+        <button
+          onClick={() => setActiveFilter("mine")}
           style={{ padding: "8px 16px", borderRadius: "20px", border: "none", cursor: "pointer", backgroundColor: activeFilter === "mine" ? "#007bff" : "rgba(255,255,255,0.9)", color: activeFilter === "mine" ? "#fff" : "#333", fontWeight: "bold", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
         >
           שלי
@@ -323,27 +395,20 @@ function UsersMap() {
         style={{ width: "100%", height: "100%" }}
       >
         <NavigationControl position="top-left" showCompass={false} />
-        
+
         <GeolocateControl
           ref={geolocateControlRef}
           position="top-left"
-          positionOptions={{ enableHighAccuracy: true }}
+          positionOptions={{ enableHighAccuracy: true, maximumAge: 10000, timeout: 6000 }}
           trackUserLocation={true}
           showUserLocation={true}
-          showAccuracyCircle={true}
+          showAccuracyCircle={false}
         />
 
         {pinnedLocation && showAddPrompt && (
           <>
-            <Marker 
-              latitude={pinnedLocation.latitude} 
-              longitude={pinnedLocation.longitude} 
-              anchor="bottom"
-            >
-              <div 
-                style={{ fontSize: "32px", cursor: "pointer", filter: "drop-shadow(0 0 3px red)" }} 
-                onClick={openAddModal}
-              >
+            <Marker latitude={pinnedLocation.latitude} longitude={pinnedLocation.longitude} anchor="bottom">
+              <div style={{ fontSize: "32px", cursor: "pointer", filter: "drop-shadow(0 0 3px red)" }} onClick={openAddModal}>
                 📍
               </div>
             </Marker>
@@ -359,12 +424,12 @@ function UsersMap() {
               closeOnClick={false}
             >
               <div style={{ direction: "rtl", textAlign: "center", padding: "5px" }}>
-                <button 
+                <button
                   type="button"
                   onClick={e => {
                     e.stopPropagation()
                     openAddModal()
-                  }} 
+                  }}
                   style={{ padding: "5px 10px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
                 >
                   הוסף מיקום כאן
@@ -384,21 +449,31 @@ function UsersMap() {
             onClose={() => setSelectedLoc(null)}
             closeOnClick={false}
           >
-            <div style={{ direction: "rtl", padding: "5px", minWidth: "150px" }}>
+            <div style={{ direction: "rtl", padding: "5px", minWidth: "160px" }}>
               <span style={{ fontSize: "11px", color: "#666", fontWeight: "bold", display: "block", marginBottom: "2px" }}>
-                {selectedLoc.isCreatedByUser ? "📌 הנקודה שלי (Saved Pins)" : "🌐 מיקום ציבורי (Locations)"}
+                {selectedLoc.isCreatedByUser ? "📌 הנקודה שלי" : "🌐 מיקום ציבורי"}
               </span>
 
               <h3 style={{ margin: "0 0 5px 0" }}>{selectedLoc.name || selectedLoc.title || "נקודה ללא שם"}</h3>
               {selectedLoc.description && <p style={{ margin: "0 0 10px 0", fontSize: "14px" }}>{selectedLoc.description}</p>}
               {selectedLoc.image_url && <img src={selectedLoc.image_url} alt={selectedLoc.name} style={{ width: "100%", maxHeight: "100px", objectFit: "cover", borderRadius: "4px", marginBottom: "10px" }} />}
-              
-              {selectedLoc.isCreatedByUser && (
-                <div style={{ display: "flex", gap: "5px" }}>
-                  <button type="button" onClick={() => openEditModal(selectedLoc)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#ffc107", border: "none", borderRadius: "4px", cursor: "pointer" }}>ערוך</button>
-                  <button type="button" onClick={() => onDelete(selectedLoc.id || selectedLoc._id)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#dc3545", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>מחק</button>
-                </div>
-              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                <button
+                  type="button"
+                  onClick={() => handleAddToFavorites(selectedLoc)}
+                  style={{ width: "100%", padding: "5px", backgroundColor: "#17a2b8", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold", fontSize: "12px" }}
+                >
+                  ⭐ הוסף למועדפים שלי
+                </button>
+
+                {selectedLoc.isCreatedByUser && (
+                  <div style={{ display: "flex", gap: "5px" }}>
+                    <button type="button" onClick={() => openEditModal(selectedLoc)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#ffc107", border: "none", borderRadius: "4px", cursor: "pointer" }}>ערוך</button>
+                    <button type="button" onClick={() => onDelete(selectedLoc.id || selectedLoc._id)} style={{ flex: 1, padding: "3px 5px", backgroundColor: "#dc3545", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>מחק</button>
+                  </div>
+                )}
+              </div>
             </div>
           </Popup>
         )}

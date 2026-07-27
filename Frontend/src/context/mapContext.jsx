@@ -43,7 +43,7 @@ export const MapProvider = ({ children }) => {
 
   const handleSave = async selectedLoc => {
     try {
-      await addUsersSaveLocationApi(selectedLoc.id)
+      await addUsersSaveLocationApi(selectedLoc)
     } catch (err) {
       console.error(err)
     }

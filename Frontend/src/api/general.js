@@ -10,14 +10,15 @@ export const getGeneralData = async () => {
 }
 
 export const getUsersLocationsApi = (userId) => {
-  return api.get(`/userslocations/getAll`, { params: { userId } })
+  return api.get(`/userslocations/getAll`, { params: { user_id: userId } })
 }
 
 export const addUsersLocationApi = (locationData) => {
-  return api.post("/userslocations/add", locationData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
+  const isFormData = typeof FormData !== "undefined" && locationData instanceof FormData
+  const payload = isFormData ? locationData : locationData
+
+  return api.post("/userslocations/add", payload, {
+    headers: isFormData ? { "Content-Type": "multipart/form-data" } : {},
   })
 }
 

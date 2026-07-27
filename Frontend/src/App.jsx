@@ -45,10 +45,12 @@ function App() {
         const response = await api.get("/auth/me")
 
         if (response.data.success) {
+          const u = response.data.user
           dispatch(
             setUser({
-              name: response.data.user.name,
-              email: response.data.user.email,
+              id: u.id || u._id,
+              name: u.name,
+              email: u.email,
             }),
           )
         }
